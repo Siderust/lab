@@ -1,0 +1,6 @@
+[submodule "siderust/siderust"]
+	path = siderust/siderust
+	url = git@github.com:Siderust/siderust.git
+[submodule "libnova/libnova"]
+	path = libnova/libnova
+	url = https://git.code.sf.net/p/libnova/libnova
