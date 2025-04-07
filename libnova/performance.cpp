@@ -46,13 +46,12 @@ int main()
 
     for (const auto &planet : planets)
     {
-
         auto start = std::chrono::high_resolution_clock::now();
         compute_heliocentric_coords_ecliptic(planet, jd_start, jd_end, step_days);
         auto end = std::chrono::high_resolution_clock::now();
-
-        auto elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
-        std::cout << "Planet " << planet.name << " getHeliocentricEcliptic mean " << elapsed_ms / n_steps << " ms.\n";
+    
+        auto elapsed_us = std::chrono::duration<double, std::micro>(end - start).count();
+        std::cout << "Planet " << planet.name << " getHeliocentricEcliptic mean " << elapsed_us / n_steps << " µs.\n";
     }
 
     return 0;
