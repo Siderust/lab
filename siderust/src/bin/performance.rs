@@ -2,7 +2,7 @@ use siderust::bodies::planets;
 use siderust::calculus::vsop87::VSOP87;
 use std::time::Instant;
 
-fn compute_coords_using_vsop87e(
+fn compute_coords_using_vsop87a(
     planet: &dyn VSOP87,
     start: f64,
     end: f64,
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (planet_name, planet_obj) in &all_planets {
         let start_time = Instant::now();
     
-        compute_coords_using_vsop87e(
+        compute_coords_using_vsop87a(
             planet_obj.as_ref(),
             start_jd,
             end_jd,
