@@ -12,7 +12,6 @@ siderust-py is a modern Python library designed to calculate and track the traje
 ### Running the image
 
    ```bash
-   docker run --rm -it -v $PWD:/home/user/src/siderust-lab
    docker run \
       --rm -it \
       -v $PWD:/home/user/src/ \

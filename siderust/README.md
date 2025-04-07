@@ -6,6 +6,6 @@ cargo run --bin foo
 
 ### Examples
 ```
-cargo run --bin performance
-cargo run --bin precission
+cargo run --release --bin performance
+cargo run --release --bin precission
 ```

@@ -18,4 +18,7 @@ RUN git clone https://git.code.sf.net/p/libnova/libnova /tmp/libnova && \
 
 RUN pip install astropy pandas matplotlib
 
+RUN useradd -m "lab" -s /usr/bin/bash
+USER "lab"
+
 CMD ["bash"]
