@@ -2,8 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from utils.metric_utils import (
-    compute_planet_metrics,  # el que devuelve estadísticos
-    compute_planet_distributions  # hipotético: devuelve arrays de errores angulares
+    compute_planet_distributions
 )
 
 def boxplot_angular_distributions(distributions, planets):
@@ -60,10 +59,6 @@ def main():
 
     planets = ["mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune"]
 
-    # 1) Aquí, compute_planet_metrics te da estadísticos agregados
-    _, angular_results = compute_planet_metrics(planets, astropy_path, libnova_path, siderust_path)
-    
-    # 2) Supongamos que implementas algo parecido para obtener la distribución de errores
     distributions = compute_planet_distributions(planets, astropy_path, libnova_path, siderust_path)
     
     # 3) Dibujamos el boxplot

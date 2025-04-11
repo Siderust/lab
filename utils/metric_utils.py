@@ -7,9 +7,9 @@ def load_csv(file_path):
     """Load a CSV file into a pandas DataFrame."""
     return pd.read_csv(file_path)
 
-def get_file_path(base_path, planet):
+def get_file_path(base_path, planet, sufix="heliocentric_ecliptic"):
     """Construct the file path for a planet's dataset."""
-    file_name = f"{planet}_heliocentric_ecliptic.csv"
+    file_name = f"{planet}_{sufix}.csv"
     return os.path.join(base_path, file_name)
 
 
@@ -61,35 +61,41 @@ def compute_planet_metrics(planets, astropy_path, libnova_path, siderust_path):
 
 def calculate_angular_error_distribution(df_ref, df_lib, merge_on="jd"):
     """
-    Similar a calculate_angular_error_details, pero retorna la lista
-    (array) de errores angulares en arcsegundos para cada fila,
-    en lugar de calcular estadísticos agregados.
+    Une los datasets de referencia y de la librería, y calcula la distribución
+    del error angular (en arcosegundos) usando las coordenadas esféricas ya proporcionadas.
+    Se asume que las columnas son:
+      - 'lambda' para la longitud eclíptica.
+      - 'beta' para la latitud eclíptica.
+    Si están en grados, se convierten a radianes.
     """
+    # Realizamos el merge de los DataFrames
     df = pd.merge(df_ref, df_lib, on=merge_on, suffixes=('_ref', '_lib'))
     
-    # Calculamos las distancias
-    df['r_ref'] = np.sqrt(df['x_ref']**2 + df['y_ref']**2 + df['z_ref']**2)
-    df['r_lib'] = np.sqrt(df['x_lib']**2 + df['y_lib']**2 + df['z_lib']**2)
+    # Suponiendo que en los CSV se tienen 'lambda' y 'beta' en grados.
+    # Si ya están en radianes, puedes omitir la conversión.
+    df['lambda_ref'] = np.radians(df['lambda_ref'])
+    df['beta_ref']   = np.radians(df['beta_ref'])
+    df['lambda_lib'] = np.radians(df['lambda_lib'])
+    df['beta_lib']   = np.radians(df['beta_lib'])
     
-    # Coordenadas eclípticas (arctan2 y arcsin)
-    df['lambda_ref'] = np.arctan2(df['y_ref'], df['x_ref'])
-    df['beta_ref']   = np.arcsin(df['z_ref'] / df['r_ref'])
-    df['lambda_lib'] = np.arctan2(df['y_lib'], df['x_lib'])
-    df['beta_lib']   = np.arcsin(df['z_lib'] / df['r_lib'])
+    # Fórmula del coseno esférico para calcular la separación angular
+    df['cos_sep'] = (
+        np.sin(df['beta_ref']) * np.sin(df['beta_lib']) +
+        np.cos(df['beta_ref']) * np.cos(df['beta_lib']) *
+        np.cos(df['lambda_ref'] - df['lambda_lib'])
+    )
     
-    # Coseno de la separación (fórmula de la esfera)
-    df['cos_sep'] = (np.sin(df['beta_ref']) * np.sin(df['beta_lib']) +
-                     np.cos(df['beta_ref']) * np.cos(df['beta_lib']) *
-                     np.cos(df['lambda_ref'] - df['lambda_lib']))
+    # Ajustamos por errores numéricos (asegurando que el valor esté entre -1 y 1)
     df['cos_sep'] = np.clip(df['cos_sep'], -1, 1)
     
-    # Separación angular en radianes
+    # Calculamos la separación angular en radianes
     df['ang_sep_rad'] = np.arccos(df['cos_sep'])
     
-    # Pasar a arcosegundos
+    # Convertimos a arcosegundos:
+    # 1 radian = (180/π)*3600 arcsec
     df['ang_sep_arcsec'] = df['ang_sep_rad'] * (180/np.pi) * 3600
     
-    # Retornamos la lista (array) de errores angulares para cada fila
+    # Devolvemos el array de errores
     return df['ang_sep_arcsec'].values
 
 
@@ -99,9 +105,9 @@ def process_planet_distributions(planet, astropy_path, libnova_path, siderust_pa
     los arrays con la distribución de errores angulares (cada muestra).
     """
     # Archivos
-    ref_file = get_file_path(astropy_path, planet)      # p. ej. "path/astropy/mercury_heliocentric_ecliptic.csv"
-    libnova_file = get_file_path(libnova_path, planet)  
-    siderust_file = get_file_path(siderust_path, planet)
+    ref_file = get_file_path(astropy_path, planet, "heliocentric_spherical")      # p. ej. "path/astropy/mercury_heliocentric_ecliptic.csv"
+    libnova_file = get_file_path(libnova_path, planet, "heliocentric_spherical")
+    siderust_file = get_file_path(siderust_path, planet, "heliocentric_spherical")
 
     # Cargar DataFrames
     ref_df = load_csv(ref_file)
