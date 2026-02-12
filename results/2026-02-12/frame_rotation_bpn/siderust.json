@@ -115,15 +115,15 @@
     ]
   },
   "performance": {
-    "per_op_ns": 1383.5,
-    "throughput_ops_s": 722778,
-    "total_ns": 1383550,
+    "per_op_ns": 2490.1,
+    "throughput_ops_s": 401591,
+    "total_ns": 2490095,
     "batch_size": 1000
   },
   "run_metadata": {
-    "date": "2026-02-12T22:17:26Z",
+    "date": "2026-02-12T22:43:26Z",
     "git_shas": {
-      "lab": "3f88b1e963fa",
+      "lab": "9abe6fbc547b",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -137,7 +137,7 @@
     }
   },
   "reference_performance": {
-    "per_op_ns": 43884.9,
-    "throughput_ops_s": 22787
+    "per_op_ns": 52814.9,
+    "throughput_ops_s": 18934
   }
 }
