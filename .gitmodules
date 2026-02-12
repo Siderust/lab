@@ -10,3 +10,6 @@
 [submodule "libnova"]
 	path = libnova
 	url = https://git.code.sf.net/p/libnova/libnova
+[submodule "erfa"]
+	path = erfa
+	url = git@github.com:liberfa/erfa.git
