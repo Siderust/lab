@@ -167,3 +167,7 @@ At maturity, this lab should produce:
 - accuracy scorecards per experiment (with traceable references)
 - performance dashboards (tables + plots)
 - a short list of concrete, data-backed improvement targets for Siderust
+
+## User manual
+
+See `USER_MANUAL.md` for step-by-step instructions to run the analysis pipeline and the GUI.
