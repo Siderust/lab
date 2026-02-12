@@ -170,4 +170,4 @@ At maturity, this lab should produce:
 
 ## User manual
 
-See `USER_MANUAL.md` for step-by-step instructions to run the analysis pipeline and the GUI.
+See `USER_MANUAL.md` for instructions on running the analysis pipeline and interpreting/visualizing the results.
