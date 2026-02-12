@@ -12,6 +12,11 @@ Usage:
 Experiments:
     frame_rotation_bpn  — Bias-Precession-Nutation direction transform (ICRS → TrueOfDate/CIRS)
     gmst_era            — Greenwich Mean Sidereal Time & Earth Rotation Angle
+    equ_ecl             — Equatorial ↔ Ecliptic coordinate transform
+    equ_horizontal      — Equatorial → Horizontal (AltAz)
+    solar_position      — Sun geocentric RA/Dec
+    lunar_position      — Moon geocentric RA/Dec
+    kepler_solver       — Kepler equation M→E→ν self-consistency
 """
 
 import argparse
@@ -125,6 +130,145 @@ def generate_gmst_era_inputs(n: int, seed: int):
     return jd_ut1, jd_tt
 
 
+def generate_equ_ecl_inputs(n: int, seed: int):
+    """Generate inputs for equatorial ↔ ecliptic transform experiment.
+
+    Returns (epochs, ra, dec) — all in radians.
+    """
+    rng = np.random.default_rng(seed)
+
+    # Epochs: 2000–2100
+    typical = 2451545.0 + rng.uniform(0, 100 * 365.25, size=max(1, n - 6))
+    edge = np.array([
+        2451545.0,    # J2000
+        2415020.0,    # ~1900
+        2488069.5,    # ~2100
+        2460676.5,    # 2025
+        2453736.5,    # 2006 (IAU 2006 epoch)
+        2460310.5,    # 2024
+    ])
+    epochs = np.concatenate([typical, edge])[:n]
+
+    # RA ∈ [0, 2π), Dec ∈ [-π/2, π/2]
+    ra = rng.uniform(0, 2 * np.pi, size=n)
+    dec = np.arcsin(rng.uniform(-1, 1, size=n))  # uniform on sphere
+
+    # Inject edge cases in the first few slots
+    if n >= 4:
+        ra[0], dec[0] = 0.0, 0.0        # vernal equinox
+        ra[1], dec[1] = np.pi, 0.0       # autumnal equinox
+        ra[2], dec[2] = 0.0, np.pi / 2   # north pole
+        ra[3], dec[3] = 0.0, -np.pi / 2  # south pole
+
+    return epochs, ra, dec
+
+
+def generate_equ_horizontal_inputs(n: int, seed: int):
+    """Generate inputs for equatorial → horizontal coordinate transform.
+
+    Returns (jd_ut1, jd_tt, ra, dec, observer_lon, observer_lat) — all radians.
+    """
+    rng = np.random.default_rng(seed)
+
+    jd_ut1 = 2451545.0 + rng.uniform(0, 30 * 365.25, size=n)
+    delta_t_days = 69.184 / 86400.0
+    jd_tt = jd_ut1 + delta_t_days
+
+    ra = rng.uniform(0, 2 * np.pi, size=n)
+    dec = np.arcsin(rng.uniform(-1, 1, size=n))
+
+    # Observer locations: lon ∈ [-π, π], lat ∈ [-π/2, π/2]
+    lon = rng.uniform(-np.pi, np.pi, size=n)
+    lat = np.arcsin(rng.uniform(-1, 1, size=n))
+
+    # Inject known observatory locations (radians)
+    if n >= 3:
+        # Greenwich: lon=0, lat=51.4769°
+        lon[0], lat[0] = 0.0, np.deg2rad(51.4769)
+        # Cerro Paranal: lon=-70.4042°, lat=-24.6272°
+        lon[1], lat[1] = np.deg2rad(-70.4042), np.deg2rad(-24.6272)
+        # North pole observer
+        lon[2], lat[2] = 0.0, np.pi / 2
+
+    return jd_ut1, jd_tt, ra, dec, lon, lat
+
+
+def generate_solar_position_inputs(n: int, seed: int):
+    """Generate epoch inputs for Sun position experiment.
+
+    Returns array of JD(TT) values spanning 1900–2100.
+    """
+    rng = np.random.default_rng(seed)
+
+    # JD range: ~1900 (2415020) to ~2100 (2488069)
+    typical = rng.uniform(2415020.0, 2488069.5, size=max(1, n - 6))
+    edge = np.array([
+        2451545.0,    # J2000
+        2451179.5,    # 1999-01-01
+        2460310.5,    # 2024-01-01
+        2451625.0,    # ~2000 March equinox
+        2451716.0,    # ~2000 June solstice
+        2451900.0,    # ~2000 Dec solstice
+    ])
+    return np.concatenate([typical, edge])[:n]
+
+
+def generate_lunar_position_inputs(n: int, seed: int):
+    """Generate epoch inputs for Moon position experiment.
+
+    Returns array of JD(TT) values spanning 1900–2100.
+    """
+    rng = np.random.default_rng(seed)
+
+    typical = rng.uniform(2415020.0, 2488069.5, size=max(1, n - 6))
+    edge = np.array([
+        2451545.0,    # J2000
+        2451550.0,    # near J2000
+        2460310.5,    # 2024-01-01
+        2459580.5,    # 2022-02-01
+        2451179.5,    # 1999-01-01
+        2488069.5,    # ~2100
+    ])
+    return np.concatenate([typical, edge])[:n]
+
+
+def generate_kepler_inputs(n: int, seed: int):
+    """Generate inputs for Kepler's equation experiment.
+
+    Returns (M_array, e_array) — M in radians, e in [0, 1).
+    """
+    rng = np.random.default_rng(seed)
+
+    # Specific eccentricities to probe accuracy across the range
+    fixed_ecc = np.array([0.0, 1e-6, 0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99, 0.999, 0.999999])
+
+    M_list = []
+    e_list = []
+
+    # For each fixed eccentricity, generate several M values
+    per_ecc = max(1, (n - 10) // len(fixed_ecc))
+    for ecc in fixed_ecc:
+        M_vals = rng.uniform(0, 2 * np.pi, size=per_ecc)
+        M_list.extend(M_vals)
+        e_list.extend([ecc] * per_ecc)
+
+    # Fill remaining with random e ∈ [0, 1)
+    remaining = max(0, n - len(M_list))
+    if remaining > 0:
+        M_list.extend(rng.uniform(0, 2 * np.pi, size=remaining))
+        e_list.extend(rng.uniform(0, 0.999, size=remaining))
+
+    M_arr = np.array(M_list[:n])
+    e_arr = np.array(e_list[:n])
+
+    # Edge cases: M = 0, M = π
+    if n >= 2:
+        M_arr[0], e_arr[0] = 0.0, 0.5
+        M_arr[1], e_arr[1] = np.pi, 0.5
+
+    return M_arr, e_arr
+
+
 # ---------------------------------------------------------------------------
 # Adapter runners
 # ---------------------------------------------------------------------------
@@ -181,6 +325,46 @@ def format_bpn_perf_input(epochs, directions):
     lines = ["frame_rotation_bpn_perf", str(len(epochs))]
     for jd, d in zip(epochs, directions):
         lines.append(f"{jd:.15f} {d[0]:.17e} {d[1]:.17e} {d[2]:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_equ_ecl_input(epochs, ra, dec):
+    """Format input for equ_ecl experiment: jd_tt ra dec per line."""
+    lines = ["equ_ecl", str(len(epochs))]
+    for jd, r, d in zip(epochs, ra, dec):
+        lines.append(f"{jd:.15f} {r:.17e} {d:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_equ_horizontal_input(jd_ut1, jd_tt, ra, dec, lon, lat):
+    """Format input for equ_horizontal experiment: jd_ut1 jd_tt ra dec lon lat per line."""
+    lines = ["equ_horizontal", str(len(jd_ut1))]
+    for u, t, r, d, lo, la in zip(jd_ut1, jd_tt, ra, dec, lon, lat):
+        lines.append(f"{u:.15f} {t:.15f} {r:.17e} {d:.17e} {lo:.17e} {la:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_solar_position_input(epochs):
+    """Format input for solar_position experiment: jd_tt per line."""
+    lines = ["solar_position", str(len(epochs))]
+    for jd in epochs:
+        lines.append(f"{jd:.15f}")
+    return "\n".join(lines) + "\n"
+
+
+def format_lunar_position_input(epochs):
+    """Format input for lunar_position experiment: jd_tt per line."""
+    lines = ["lunar_position", str(len(epochs))]
+    for jd in epochs:
+        lines.append(f"{jd:.15f}")
+    return "\n".join(lines) + "\n"
+
+
+def format_kepler_input(M_arr, e_arr):
+    """Format input for kepler_solver experiment: M e per line."""
+    lines = ["kepler_solver", str(len(M_arr))]
+    for m, e in zip(M_arr, e_arr):
+        lines.append(f"{m:.17e} {e:.17e}")
     return "\n".join(lines) + "\n"
 
 
@@ -307,6 +491,158 @@ def compute_gmst_accuracy(ref_cases, cand_cases, ref_label, cand_label):
     }
 
 
+def angular_separation(ra1, dec1, ra2, dec2):
+    """Compute angular separation between two (RA, Dec) pairs in radians."""
+    cos_sep = (math.sin(dec1) * math.sin(dec2)
+               + math.cos(dec1) * math.cos(dec2) * math.cos(ra1 - ra2))
+    return math.acos(max(-1.0, min(1.0, cos_sep)))
+
+
+def compute_angular_accuracy(ref_cases, cand_cases, ref_label, cand_label,
+                             ra_key="ra_rad", dec_key="dec_rad",
+                             extra_keys=None):
+    """Compare RA/Dec angular positions between reference and candidate.
+
+    Works for equ_ecl (lon/lat), solar/lunar position, etc.
+    extra_keys: optional list of keys to also compute absolute difference stats.
+    """
+    sep_errors_arcsec = []
+    signed_ra_errors = []
+    signed_dec_errors = []
+    extra_diffs = {k: [] for k in (extra_keys or [])}
+    nan_count = 0
+
+    for ref_c, cand_c in zip(ref_cases, cand_cases):
+        r_ra = ref_c.get(ra_key)
+        r_dec = ref_c.get(dec_key)
+        c_ra = cand_c.get(ra_key)
+        c_dec = cand_c.get(dec_key)
+
+        if any(v is None for v in [r_ra, r_dec, c_ra, c_dec]):
+            nan_count += 1
+            continue
+        if any(math.isnan(v) or math.isinf(v) for v in [c_ra, c_dec]):
+            nan_count += 1
+            continue
+
+        sep = angular_separation(r_ra, r_dec, c_ra, c_dec)
+        sep_errors_arcsec.append(sep * RAD_TO_ARCSEC)
+
+        # Signed errors for bias detection
+        dra = c_ra - r_ra
+        # wrap RA difference to [-π, π]
+        if dra > math.pi:
+            dra -= 2 * math.pi
+        elif dra < -math.pi:
+            dra += 2 * math.pi
+        signed_ra_errors.append(dra * RAD_TO_ARCSEC)
+        signed_dec_errors.append((c_dec - r_dec) * RAD_TO_ARCSEC)
+
+        for k in (extra_keys or []):
+            rv = ref_c.get(k)
+            cv = cand_c.get(k)
+            if rv is not None and cv is not None:
+                extra_diffs[k].append(cv - rv)
+
+    def percentiles(arr):
+        if len(arr) == 0:
+            return {"p50": None, "p90": None, "p99": None, "max": None, "mean": None, "rms": None}
+        a = np.array(arr)
+        return {
+            "p50": float(np.percentile(np.abs(a), 50)),
+            "p90": float(np.percentile(np.abs(a), 90)),
+            "p99": float(np.percentile(np.abs(a), 99)),
+            "max": float(np.max(np.abs(a))),
+            "mean": float(np.mean(a)),
+            "rms": float(np.sqrt(np.mean(a**2))),
+        }
+
+    result = {
+        "reference": ref_label,
+        "candidate": cand_label,
+        "angular_sep_arcsec": percentiles(sep_errors_arcsec),
+        "signed_ra_error_arcsec": percentiles(signed_ra_errors),
+        "signed_dec_error_arcsec": percentiles(signed_dec_errors),
+        "nan_count": nan_count,
+    }
+
+    for k in (extra_keys or []):
+        result[f"{k}_diff"] = percentiles(extra_diffs[k])
+
+    return result
+
+
+def compute_kepler_accuracy(ref_cases, cand_cases, ref_label, cand_label):
+    """Compare Kepler solver results: E and ν residuals, plus self-consistency."""
+    E_errors_rad = []
+    nu_errors_rad = []
+    consistency_errors = []
+    nan_count = 0
+
+    for ref_c, cand_c in zip(ref_cases, cand_cases):
+        r_E = ref_c.get("E_rad")
+        c_E = cand_c.get("E_rad")
+        r_nu = ref_c.get("nu_rad")
+        c_nu = cand_c.get("nu_rad")
+
+        if any(v is None for v in [r_E, c_E, r_nu, c_nu]):
+            nan_count += 1
+            continue
+        if any(math.isnan(v) or math.isinf(v) for v in [c_E, c_nu]):
+            nan_count += 1
+            continue
+
+        E_err = c_E - r_E
+        # Wrap E difference to [-π, π] since E is defined mod 2π
+        while E_err > math.pi:
+            E_err -= 2 * math.pi
+        while E_err < -math.pi:
+            E_err += 2 * math.pi
+        E_errors_rad.append(E_err)
+
+        nu_err = c_nu - r_nu
+        # Wrap ν difference similarly
+        while nu_err > math.pi:
+            nu_err -= 2 * math.pi
+        while nu_err < -math.pi:
+            nu_err += 2 * math.pi
+        nu_errors_rad.append(nu_err)
+
+        # Self-consistency: M = E - e*sin(E) should hold
+        M_input = cand_c.get("M_rad", ref_c.get("M_rad", 0.0))
+        e = cand_c.get("e", ref_c.get("e", 0.0))
+        M_recon = c_E - e * math.sin(c_E)
+        # Wrap to [0, 2π)
+        M_input_w = M_input % (2 * math.pi)
+        M_recon_w = M_recon % (2 * math.pi)
+        consistency = abs(M_input_w - M_recon_w)
+        if consistency > math.pi:
+            consistency = 2 * math.pi - consistency
+        consistency_errors.append(consistency)
+
+    def percentiles(arr):
+        if len(arr) == 0:
+            return {"p50": None, "p90": None, "p99": None, "max": None, "mean": None, "rms": None}
+        a = np.array(arr)
+        return {
+            "p50": float(np.percentile(np.abs(a), 50)),
+            "p90": float(np.percentile(np.abs(a), 90)),
+            "p99": float(np.percentile(np.abs(a), 99)),
+            "max": float(np.max(np.abs(a))),
+            "mean": float(np.mean(a)),
+            "rms": float(np.sqrt(np.mean(a**2))),
+        }
+
+    return {
+        "reference": ref_label,
+        "candidate": cand_label,
+        "E_error_rad": percentiles(E_errors_rad),
+        "nu_error_rad": percentiles(nu_errors_rad),
+        "consistency_error_rad": percentiles(consistency_errors),
+        "nan_count": nan_count,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Alignment checklist
 # ---------------------------------------------------------------------------
@@ -354,6 +690,73 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)",
         }
         base["mode"] = mode
+
+    elif experiment == "equ_ecl":
+        base["models"] = {
+            "erfa": "IAU 2006 obliquity-based transform (eraEqec06 / eraEceq06)",
+            "siderust": "IAU 2006 obliquity, Ecliptic frame via Transform trait",
+            "astropy": "IAU 2006 via bundled ERFA (erfa.eqec06 / erfa.eceq06)",
+            "libnova": "Meeus obliquity (Eq 22.2) via ln_get_ecl_from_equ / ln_get_equ_from_ecl",
+        }
+        base["note"] = (
+            "ERFA and Astropy share the same IAU 2006 obliquity model (reference). "
+            "Siderust uses IAU 2006 obliquity with its own Ecliptic frame implementation. "
+            "libnova uses Meeus obliquity polynomial — expect ~arcsec-level differences."
+        )
+
+    elif experiment == "equ_horizontal":
+        base["models"] = {
+            "erfa": "Spherical trig via eraHd2ae / eraAe2hd; GAST via eraGst06a; no refraction",
+            "siderust": "Manual spherical trig matching ERFA formula; GAST from GST polynomial",
+            "astropy": "eraHd2ae / eraAe2hd via bundled ERFA; GAST via eraGst06a",
+            "libnova": "ln_get_hrz_from_equ / ln_get_equ_from_hrz; convention fix: az_erfa = (360 - az_ln + 180) % 360",
+        }
+        base["note"] = (
+            "Azimuth convention: ERFA 0°=North CW; libnova 0°=South. "
+            "All adapters use the same spherical trig, differences arise from GAST model. "
+            "No atmospheric refraction applied."
+        )
+        base["refraction"] = "disabled"
+
+    elif experiment == "solar_position":
+        base["models"] = {
+            "erfa": "VSOP87 via eraEpv00: heliocentric Earth → geocentric Sun (negate); BCRS equatorial output",
+            "siderust": "VSOP87 via Sun::get_apparent_geocentric_equ (includes aberration + FK5)",
+            "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
+            "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)",
+        }
+        base["ephemeris_source"] = "VSOP87 (analytic, all libraries)"
+        base["note"] = (
+            "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). "
+            "Differences reflect VSOP87 truncation levels and aberration correction details."
+        )
+
+    elif experiment == "lunar_position":
+        base["models"] = {
+            "erfa": "Simplified Meeus Ch.47 (major terms only, ~10' accuracy)",
+            "siderust": "ELP 2000 via Moon::get_apparent_topocentric_equ with site at (0,0,0)",
+            "astropy": "Simplified Meeus Ch.47 (same algorithm as ERFA adapter)",
+            "libnova": "ELP 2000-82B via ln_get_lunar_equ_coords (full model)",
+        }
+        base["note"] = (
+            "ERFA and Astropy use simplified Meeus (~10' accuracy) — for benchmarking only. "
+            "Siderust and libnova use full ELP 2000 — expect ~arcmin-level differences vs reference. "
+            "No dedicated ERFA Moon ephemeris exists; cross-library comparison is the primary metric."
+        )
+        base["ephemeris_source"] = "Meeus/ELP 2000 (varies by library)"
+
+    elif experiment == "kepler_solver":
+        base["models"] = {
+            "erfa": "Newton-Raphson iteration (100 iters, tol 1e-15)",
+            "siderust": "solve_keplers_equation (internal algorithm)",
+            "astropy": "Newton-Raphson iteration in Python (100 iters, tol 1e-15)",
+            "libnova": "Sinnott bisection via ln_solve_kepler (internal convergence ~1e-6 deg)",
+        }
+        base["note"] = (
+            "Kepler's equation M = E - e*sin(E) is solved for E given (M, e). "
+            "Self-consistency M_reconstructed = E - e*sin(E) is the primary metric. "
+            "libnova uses a bisection method with lower convergence tolerance."
+        )
 
     return base
 
@@ -413,6 +816,8 @@ def generate_summary_table(all_results: list) -> str:
     def fmt(v, precision=2):
         if v is None:
             return "—"
+        if precision == 'e':
+            return f"{v:.2e}"
         return f"{v:.{precision}f}"
 
     # Separate by experiment type
@@ -472,6 +877,93 @@ def generate_summary_table(all_results: list) -> str:
                 f"| {fmt(era.get('max'), 10)} |"
             )
         lines.append("")
+
+    # --- Angular experiments (equ_ecl, equ_horizontal, solar_position, lunar_position) ---
+    for exp_name, title in [
+        ("equ_ecl", "Equatorial ↔ Ecliptic Transform"),
+        ("equ_horizontal", "Equatorial → Horizontal (AltAz)"),
+        ("solar_position", "Sun Geocentric Position"),
+        ("lunar_position", "Moon Geocentric Position"),
+    ]:
+        exp_results = [r for r in all_results if r.get("experiment") == exp_name]
+        if not exp_results:
+            continue
+
+        lines.append(f"### {title}")
+        lines.append("")
+        lines.append("| Library | Sep p50 (arcsec) | Sep p99 (arcsec) | Sep max (arcsec) | RA bias (arcsec) | Dec bias (arcsec) |")
+        lines.append("|---------|------------------|------------------|------------------|------------------|-------------------|")
+
+        for r in exp_results:
+            lib = r.get("candidate_library", "?")
+            acc = r.get("accuracy", {})
+            sep = acc.get("angular_sep_arcsec", {})
+            ra_b = acc.get("signed_ra_error_arcsec", {})
+            dec_b = acc.get("signed_dec_error_arcsec", {})
+
+            lines.append(
+                f"| {lib} "
+                f"| {fmt(sep.get('p50'), 4)} "
+                f"| {fmt(sep.get('p99'), 4)} "
+                f"| {fmt(sep.get('max'), 4)} "
+                f"| {fmt(ra_b.get('mean'), 4)} "
+                f"| {fmt(dec_b.get('mean'), 4)} |"
+            )
+        lines.append("")
+
+    # --- Kepler solver ---
+    kepler_results = [r for r in all_results if r.get("experiment") == "kepler_solver"]
+    if kepler_results:
+        lines.append("### Kepler Solver (M→E→ν)")
+        lines.append("")
+        lines.append("| Library | E p50 (rad) | E max (rad) | ν p50 (rad) | ν max (rad) | Consistency max (rad) |")
+        lines.append("|---------|-------------|-------------|-------------|-------------|-----------------------|")
+
+        for r in kepler_results:
+            lib = r.get("candidate_library", "?")
+            acc = r.get("accuracy", {})
+            E_err = acc.get("E_error_rad", {})
+            nu_err = acc.get("nu_error_rad", {})
+            con = acc.get("consistency_error_rad", {})
+
+            lines.append(
+                f"| {lib} "
+                f"| {fmt(E_err.get('p50'), 'e')} "
+                f"| {fmt(E_err.get('max'), 'e')} "
+                f"| {fmt(nu_err.get('p50'), 'e')} "
+                f"| {fmt(nu_err.get('max'), 'e')} "
+                f"| {fmt(con.get('max'), 'e')} |"
+            )
+        lines.append("")
+
+    # --- Feature / Model Parity Matrix ---
+    lines.append("### Feature / Model Parity Matrix")
+    lines.append("")
+    experiments_seen = sorted(set(r.get("experiment", "") for r in all_results))
+    libs_seen = sorted(set(r.get("candidate_library", "") for r in all_results))
+    all_libs = ["erfa"] + libs_seen  # erfa is always reference
+
+    header = "| Experiment | " + " | ".join(all_libs) + " |"
+    separator = "|------------|" + "|".join(["---"] * len(all_libs)) + "|"
+    lines.append(header)
+    lines.append(separator)
+
+    # Model descriptions per (experiment, library) from alignment checklists
+    for exp in experiments_seen:
+        exp_r = [r for r in all_results if r.get("experiment") == exp]
+        if not exp_r:
+            continue
+        alignment = exp_r[0].get("alignment", {})
+        models = alignment.get("models", {})
+        cells = []
+        for lib in all_libs:
+            model_str = models.get(lib, "—")
+            # Truncate for table readability
+            if len(model_str) > 50:
+                model_str = model_str[:47] + "..."
+            cells.append(model_str)
+        lines.append(f"| {exp} | " + " | ".join(cells) + " |")
+    lines.append("")
 
     return "\n".join(lines) + "\n"
 
@@ -644,6 +1136,282 @@ def run_experiment_gmst_era(n: int, seed: int):
     return results
 
 
+def run_experiment_equ_ecl(n: int, seed: int):
+    """
+    Run the equ_ecl experiment: equatorial ↔ ecliptic coordinate transform.
+
+    Reference: ERFA (IAU 2006 obliquity)
+    Candidates: Siderust, Astropy, libnova
+    """
+    print(f"\n{'='*70}")
+    print(f" Experiment: equ_ecl (N={n}, seed={seed})")
+    print(f"{'='*70}")
+
+    print("  Generating inputs...")
+    epochs, ra, dec = generate_equ_ecl_inputs(n, seed)
+    input_text = format_equ_ecl_input(epochs, ra, dec)
+
+    adapters = {}
+    for lib, cmd, label in [
+        ("erfa", [str(ERFA_BIN)], "erfa"),
+        ("siderust", [str(SIDERUST_BIN)], "siderust"),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
+        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
+    ]:
+        print(f"  Running {label} adapter...")
+        adapters[lib] = run_adapter(cmd, input_text, label)
+
+    results = []
+    ref_data = adapters.get("erfa")
+    if ref_data is None:
+        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
+        return results
+
+    for lib in ["siderust", "astropy", "libnova"]:
+        cand_data = adapters.get(lib)
+        if cand_data is None:
+            continue
+
+        print(f"  Computing accuracy: {lib} vs erfa...")
+        accuracy = compute_angular_accuracy(
+            ref_data["cases"], cand_data["cases"], "erfa", lib,
+            ra_key="ecl_lon_rad", dec_key="ecl_lat_rad",
+        )
+
+        results.append({
+            "experiment": "equ_ecl",
+            "candidate_library": lib,
+            "reference_library": "erfa",
+            "alignment": alignment_checklist("equ_ecl"),
+            "inputs": {"count": n, "seed": seed},
+            "accuracy": accuracy,
+            "run_metadata": run_metadata(),
+        })
+
+    return results
+
+
+def run_experiment_equ_horizontal(n: int, seed: int):
+    """
+    Run the equ_horizontal experiment: equatorial → horizontal (AltAz).
+
+    Reference: ERFA (eraHd2ae + eraGst06a)
+    Candidates: Siderust, Astropy, libnova
+    """
+    print(f"\n{'='*70}")
+    print(f" Experiment: equ_horizontal (N={n}, seed={seed})")
+    print(f"{'='*70}")
+
+    print("  Generating inputs...")
+    jd_ut1, jd_tt, ra, dec, lon, lat = generate_equ_horizontal_inputs(n, seed)
+    input_text = format_equ_horizontal_input(jd_ut1, jd_tt, ra, dec, lon, lat)
+
+    adapters = {}
+    for lib, cmd, label in [
+        ("erfa", [str(ERFA_BIN)], "erfa"),
+        ("siderust", [str(SIDERUST_BIN)], "siderust"),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
+        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
+    ]:
+        print(f"  Running {label} adapter...")
+        adapters[lib] = run_adapter(cmd, input_text, label)
+
+    results = []
+    ref_data = adapters.get("erfa")
+    if ref_data is None:
+        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
+        return results
+
+    for lib in ["siderust", "astropy", "libnova"]:
+        cand_data = adapters.get(lib)
+        if cand_data is None:
+            continue
+
+        print(f"  Computing accuracy: {lib} vs erfa...")
+        accuracy = compute_angular_accuracy(
+            ref_data["cases"], cand_data["cases"], "erfa", lib,
+            ra_key="az_rad", dec_key="alt_rad",
+        )
+
+        results.append({
+            "experiment": "equ_horizontal",
+            "candidate_library": lib,
+            "reference_library": "erfa",
+            "alignment": alignment_checklist("equ_horizontal"),
+            "inputs": {"count": n, "seed": seed},
+            "accuracy": accuracy,
+            "run_metadata": run_metadata(),
+        })
+
+    return results
+
+
+def run_experiment_solar_position(n: int, seed: int):
+    """
+    Run the solar_position experiment: geocentric Sun RA/Dec.
+
+    Reference: ERFA (VSOP87 via epv00)
+    Candidates: Siderust, Astropy, libnova
+    """
+    print(f"\n{'='*70}")
+    print(f" Experiment: solar_position (N={n}, seed={seed})")
+    print(f"{'='*70}")
+
+    print("  Generating inputs...")
+    epochs = generate_solar_position_inputs(n, seed)
+    input_text = format_solar_position_input(epochs)
+
+    adapters = {}
+    for lib, cmd, label in [
+        ("erfa", [str(ERFA_BIN)], "erfa"),
+        ("siderust", [str(SIDERUST_BIN)], "siderust"),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
+        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
+    ]:
+        print(f"  Running {label} adapter...")
+        adapters[lib] = run_adapter(cmd, input_text, label)
+
+    results = []
+    ref_data = adapters.get("erfa")
+    if ref_data is None:
+        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
+        return results
+
+    for lib in ["siderust", "astropy", "libnova"]:
+        cand_data = adapters.get(lib)
+        if cand_data is None:
+            continue
+
+        print(f"  Computing accuracy: {lib} vs erfa...")
+        accuracy = compute_angular_accuracy(
+            ref_data["cases"], cand_data["cases"], "erfa", lib,
+            ra_key="ra_rad", dec_key="dec_rad",
+            extra_keys=["dist_au"],
+        )
+
+        results.append({
+            "experiment": "solar_position",
+            "candidate_library": lib,
+            "reference_library": "erfa",
+            "alignment": alignment_checklist("solar_position"),
+            "inputs": {"count": n, "seed": seed},
+            "accuracy": accuracy,
+            "run_metadata": run_metadata(),
+        })
+
+    return results
+
+
+def run_experiment_lunar_position(n: int, seed: int):
+    """
+    Run the lunar_position experiment: geocentric Moon RA/Dec.
+
+    Note: ERFA/Astropy use simplified Meeus (~10' accuracy).
+    Siderust/libnova use full ELP 2000. Cross-lib comparison is the metric.
+    """
+    print(f"\n{'='*70}")
+    print(f" Experiment: lunar_position (N={n}, seed={seed})")
+    print(f"{'='*70}")
+
+    print("  Generating inputs...")
+    epochs = generate_lunar_position_inputs(n, seed)
+    input_text = format_lunar_position_input(epochs)
+
+    adapters = {}
+    for lib, cmd, label in [
+        ("erfa", [str(ERFA_BIN)], "erfa"),
+        ("siderust", [str(SIDERUST_BIN)], "siderust"),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
+        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
+    ]:
+        print(f"  Running {label} adapter...")
+        adapters[lib] = run_adapter(cmd, input_text, label)
+
+    # For Moon, use ERFA as reference but note it's simplified Meeus
+    results = []
+    ref_data = adapters.get("erfa")
+    if ref_data is None:
+        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
+        return results
+
+    for lib in ["siderust", "astropy", "libnova"]:
+        cand_data = adapters.get(lib)
+        if cand_data is None:
+            continue
+
+        print(f"  Computing accuracy: {lib} vs erfa...")
+        accuracy = compute_angular_accuracy(
+            ref_data["cases"], cand_data["cases"], "erfa", lib,
+            ra_key="ra_rad", dec_key="dec_rad",
+            extra_keys=["dist_km"],
+        )
+
+        results.append({
+            "experiment": "lunar_position",
+            "candidate_library": lib,
+            "reference_library": "erfa",
+            "alignment": alignment_checklist("lunar_position"),
+            "inputs": {"count": n, "seed": seed},
+            "accuracy": accuracy,
+            "run_metadata": run_metadata(),
+        })
+
+    return results
+
+
+def run_experiment_kepler_solver(n: int, seed: int):
+    """
+    Run the kepler_solver experiment: Kepler's equation M→E→ν.
+
+    All libraries compared against each other (ERFA as reference).
+    """
+    print(f"\n{'='*70}")
+    print(f" Experiment: kepler_solver (N={n}, seed={seed})")
+    print(f"{'='*70}")
+
+    print("  Generating inputs...")
+    M_arr, e_arr = generate_kepler_inputs(n, seed)
+    input_text = format_kepler_input(M_arr, e_arr)
+
+    adapters = {}
+    for lib, cmd, label in [
+        ("erfa", [str(ERFA_BIN)], "erfa"),
+        ("siderust", [str(SIDERUST_BIN)], "siderust"),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
+        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
+    ]:
+        print(f"  Running {label} adapter...")
+        adapters[lib] = run_adapter(cmd, input_text, label)
+
+    results = []
+    ref_data = adapters.get("erfa")
+    if ref_data is None:
+        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
+        return results
+
+    for lib in ["siderust", "astropy", "libnova"]:
+        cand_data = adapters.get(lib)
+        if cand_data is None:
+            continue
+
+        print(f"  Computing accuracy: {lib} vs erfa...")
+        accuracy = compute_kepler_accuracy(
+            ref_data["cases"], cand_data["cases"], "erfa", lib,
+        )
+
+        results.append({
+            "experiment": "kepler_solver",
+            "candidate_library": lib,
+            "reference_library": "erfa",
+            "alignment": alignment_checklist("kepler_solver"),
+            "inputs": {"count": n, "seed": seed},
+            "accuracy": accuracy,
+            "run_metadata": run_metadata(),
+        })
+
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
@@ -683,9 +1451,14 @@ def write_results(results: list, experiment: str):
 # ---------------------------------------------------------------------------
 
 def main():
+    all_experiments = [
+        "frame_rotation_bpn", "gmst_era", "equ_ecl", "equ_horizontal",
+        "solar_position", "lunar_position", "kepler_solver",
+    ]
+
     parser = argparse.ArgumentParser(description="Siderust Lab Orchestrator")
-    parser.add_argument("--experiment", default="frame_rotation_bpn",
-                        choices=["frame_rotation_bpn", "gmst_era", "all"],
+    parser.add_argument("--experiment", default="all",
+                        choices=all_experiments + ["all"],
                         help="Which experiment to run")
     parser.add_argument("--n", type=int, default=1000,
                         help="Number of test cases")
@@ -695,24 +1468,29 @@ def main():
                         help="Skip performance tests")
     args = parser.parse_args()
 
-    experiments_to_run = []
-    if args.experiment == "all":
-        experiments_to_run = ["frame_rotation_bpn", "gmst_era"]
-    else:
-        experiments_to_run = [args.experiment]
+    experiments_to_run = all_experiments if args.experiment == "all" else [args.experiment]
 
     all_results = []
 
+    dispatch = {
+        "frame_rotation_bpn": lambda: run_experiment_frame_rotation_bpn(
+            args.n, args.seed, run_perf=not args.no_perf
+        ),
+        "gmst_era": lambda: run_experiment_gmst_era(args.n, args.seed),
+        "equ_ecl": lambda: run_experiment_equ_ecl(args.n, args.seed),
+        "equ_horizontal": lambda: run_experiment_equ_horizontal(args.n, args.seed),
+        "solar_position": lambda: run_experiment_solar_position(args.n, args.seed),
+        "lunar_position": lambda: run_experiment_lunar_position(args.n, args.seed),
+        "kepler_solver": lambda: run_experiment_kepler_solver(args.n, args.seed),
+    }
+
     for exp in experiments_to_run:
-        if exp == "frame_rotation_bpn":
-            results = run_experiment_frame_rotation_bpn(
-                args.n, args.seed, run_perf=not args.no_perf
-            )
-        elif exp == "gmst_era":
-            results = run_experiment_gmst_era(args.n, args.seed)
-        else:
+        runner = dispatch.get(exp)
+        if runner is None:
             print(f"Unknown experiment: {exp}", file=sys.stderr)
             continue
+
+        results = runner()
 
         if results:
             write_results(results, exp)
@@ -735,6 +1513,17 @@ def main():
                 if gmst.get("p50") is not None:
                     print(f"  {lib} vs erfa:")
                     print(f"    GMST error (arcsec): p50={gmst['p50']:.6f}  p99={gmst['p99']:.6f}  max={gmst['max']:.6f}")
+
+                sep = acc.get("angular_sep_arcsec", {})
+                if sep.get("p50") is not None:
+                    print(f"  {lib} vs erfa:")
+                    print(f"    Angular sep (arcsec): p50={sep['p50']:.4f}  p99={sep['p99']:.4f}  max={sep['max']:.4f}")
+
+                E_err = acc.get("E_error_rad", {})
+                if E_err.get("p50") is not None:
+                    con = acc.get("consistency_error_rad", {})
+                    print(f"  {lib} vs erfa:")
+                    print(f"    E error (rad): p50={E_err['p50']:.2e}  max={E_err['max']:.2e}  consistency max={con.get('max', 0):.2e}")
 
                 perf = r.get("performance", {})
                 if perf.get("per_op_ns"):

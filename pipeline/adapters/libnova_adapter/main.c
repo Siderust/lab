@@ -3,24 +3,15 @@
 /*
  * libnova Adapter for the Siderust Lab
  *
- * Reads line-protocol from stdin, runs libnova transformations,
- * writes JSON results to stdout.
- *
- * Protocol (one experiment per invocation):
- *   Line 1: experiment name
- *   Line 2: N (number of test cases)
- *   Lines 3..N+2: space-separated values depending on experiment
- *
- * Output: JSON to stdout.
- *
  * Supported experiments:
  *   frame_rotation_bpn  — Precession + Nutation (Meeus / IAU 1980)
- *     Input per line:  jd_tt  vx vy vz
- *     Output: transformed direction (matrix is null — libnova has no BPN matrix)
- *
- *   gmst_era — Greenwich Mean Sidereal Time (no ERA — libnova has no ERA)
- *     Input per line:  jd_ut1  jd_tt
- *     Output: GMST (rad), GAST (rad)
+ *   gmst_era            — GMST (Meeus 11.4) & GAST
+ *   equ_ecl             — Equatorial ↔ Ecliptic
+ *   equ_horizontal      — Equatorial → Horizontal (AltAz)
+ *   solar_position      — Sun geocentric RA/Dec (VSOP87)
+ *   lunar_position      — Moon geocentric RA/Dec (ELP 2000-82B)
+ *   kepler_solver       — Kepler equation (Sinnott bisection)
+ *   frame_rotation_bpn_perf — BPN performance timing
  */
 
 #include <stdio.h>
@@ -34,6 +25,10 @@
 #include <libnova/sidereal_time.h>
 #include <libnova/ln_types.h>
 #include <libnova/utility.h>
+#include <libnova/transform.h>
+#include <libnova/solar.h>
+#include <libnova/lunar.h>
+#include <libnova/elliptic_motion.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -217,6 +212,232 @@ static void run_gmst_era(void) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Experiment: equ_ecl                                                 */
+/* Equatorial ↔ Ecliptic via libnova transform API                     */
+/* libnova uses degrees: RA in hours→deg, Dec in deg, lon/lat in deg   */
+/* Input per line: jd_tt  ra_rad  dec_rad                              */
+/* ------------------------------------------------------------------ */
+
+static void run_equ_ecl(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"equ_ecl\",\"library\":\"libnova\",");
+    printf("\"model\":\"libnova_transform\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, ra_rad, dec_rad;
+        if (scanf("%lf %lf %lf", &jd_tt, &ra_rad, &dec_rad) != 3) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        /* Convert input radians → libnova degrees */
+        /* libnova equ_posn.ra is in degrees (0..360), dec in degrees */
+        double ra_deg  = ra_rad  * (180.0 / M_PI);
+        double dec_deg = dec_rad * (180.0 / M_PI);
+
+        struct ln_equ_posn equ = { .ra = ra_deg, .dec = dec_deg };
+        struct ln_lnlat_posn ecl;
+        ln_get_ecl_from_equ(&equ, jd_tt, &ecl);
+
+        double ecl_lon = ecl.lng * (M_PI / 180.0);
+        double ecl_lat = ecl.lat * (M_PI / 180.0);
+
+        /* Closure: ecliptic → equatorial */
+        struct ln_lnlat_posn ecl2 = { .lng = ecl.lng, .lat = ecl.lat };
+        struct ln_equ_posn equ_back;
+        ln_get_equ_from_ecl(&ecl2, jd_tt, &equ_back);
+
+        double ra_back  = equ_back.ra  * (M_PI / 180.0);
+        double dec_back = equ_back.dec * (M_PI / 180.0);
+
+        double v_in[3]  = { cos(dec_rad)*cos(ra_rad), cos(dec_rad)*sin(ra_rad), sin(dec_rad) };
+        double v_bk[3]  = { cos(dec_back)*cos(ra_back), cos(dec_back)*sin(ra_back), sin(dec_back) };
+        double closure_rad = ang_sep(v_in, v_bk);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"ra_rad\":%.17e,\"dec_rad\":%.17e,", jd_tt, ra_rad, dec_rad);
+        printf("\"ecl_lon_rad\":%.17e,\"ecl_lat_rad\":%.17e,", ecl_lon, ecl_lat);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: equ_horizontal                                          */
+/* Equatorial → Horizontal via libnova                                 */
+/* libnova azimuth: 0°=South, increasing westward → convert to         */
+/* 0°=North, increasing eastward to match ERFA convention.             */
+/* Input per line: jd_ut1 jd_tt ra_rad dec_rad obs_lon_rad obs_lat_rad */
+/* ------------------------------------------------------------------ */
+
+static void run_equ_horizontal(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"equ_horizontal\",\"library\":\"libnova\",");
+    printf("\"model\":\"libnova_transform\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_ut1, jd_tt, ra_rad, dec_rad, obs_lon, obs_lat;
+        if (scanf("%lf %lf %lf %lf %lf %lf", &jd_ut1, &jd_tt, &ra_rad, &dec_rad,
+                  &obs_lon, &obs_lat) != 6) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        double ra_deg  = ra_rad  * (180.0 / M_PI);
+        double dec_deg = dec_rad * (180.0 / M_PI);
+        double lon_deg = obs_lon * (180.0 / M_PI);
+        double lat_deg = obs_lat * (180.0 / M_PI);
+
+        struct ln_equ_posn equ = { .ra = ra_deg, .dec = dec_deg };
+        struct ln_lnlat_posn observer = { .lng = lon_deg, .lat = lat_deg };
+        struct ln_hrz_posn hrz;
+        ln_get_hrz_from_equ(&equ, &observer, jd_ut1, &hrz);
+
+        /* libnova: az 0=South, increasing toward West (CW from above).
+         * ERFA:    az 0=North, increasing toward East (CW from above).
+         * Convert: az_erfa = (az_libnova + 180°) mod 360° */
+        double az_erfa_deg = fmod(hrz.az + 180.0, 360.0);
+        double az_rad = az_erfa_deg * (M_PI / 180.0);
+        double alt_rad = hrz.alt * (M_PI / 180.0);
+
+        /* Closure via reverse */
+        struct ln_hrz_posn hrz2 = { .az = hrz.az, .alt = hrz.alt };
+        struct ln_equ_posn equ_back;
+        ln_get_equ_from_hrz(&hrz2, &observer, jd_ut1, &equ_back);
+
+        double ra_back  = equ_back.ra  * (M_PI / 180.0);
+        double dec_back = equ_back.dec * (M_PI / 180.0);
+        double v_in[3]  = { cos(dec_rad)*cos(ra_rad), cos(dec_rad)*sin(ra_rad), sin(dec_rad) };
+        double v_bk[3]  = { cos(dec_back)*cos(ra_back), cos(dec_back)*sin(ra_back), sin(dec_back) };
+        double closure_rad = ang_sep(v_in, v_bk);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_ut1\":%.15f,\"jd_tt\":%.15f,", jd_ut1, jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,", ra_rad, dec_rad);
+        printf("\"obs_lon_rad\":%.17e,\"obs_lat_rad\":%.17e,", obs_lon, obs_lat);
+        printf("\"az_rad\":%.17e,\"alt_rad\":%.17e,", az_rad, alt_rad);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: solar_position                                          */
+/* Sun geocentric RA/Dec via libnova VSOP87                            */
+/* Input per line: jd_tt                                               */
+/* ------------------------------------------------------------------ */
+
+static void run_solar_position(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"solar_position\",\"library\":\"libnova\",");
+    printf("\"model\":\"libnova_VSOP87\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt;
+        if (scanf("%lf", &jd_tt) != 1) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        struct ln_equ_posn posn;
+        ln_get_solar_equ_coords(jd_tt, &posn);
+
+        /* libnova: ra in degrees (0..360), dec in degrees */
+        double ra_rad  = posn.ra  * (M_PI / 180.0);
+        double dec_rad = posn.dec * (M_PI / 180.0);
+
+        /* Get distance */
+        double dist_au = ln_get_earth_solar_dist(jd_tt);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,", jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,\"dist_au\":%.17e}", ra_rad, dec_rad, dist_au);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: lunar_position                                          */
+/* Moon geocentric RA/Dec via libnova ELP 2000-82B                     */
+/* Input per line: jd_tt                                               */
+/* ------------------------------------------------------------------ */
+
+static void run_lunar_position(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"lunar_position\",\"library\":\"libnova\",");
+    printf("\"model\":\"libnova_ELP2000\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt;
+        if (scanf("%lf", &jd_tt) != 1) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        struct ln_equ_posn posn;
+        ln_get_lunar_equ_coords(jd_tt, &posn);
+
+        double ra_rad  = posn.ra  * (M_PI / 180.0);
+        double dec_rad = posn.dec * (M_PI / 180.0);
+
+        double dist_km = ln_get_lunar_earth_dist(jd_tt);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,", jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,\"dist_km\":%.17e}", ra_rad, dec_rad, dist_km);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: kepler_solver                                           */
+/* Kepler equation via libnova's Sinnott bisection method              */
+/* Input per line: M_rad  e                                            */
+/* ------------------------------------------------------------------ */
+
+static void run_kepler_solver(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"kepler_solver\",\"library\":\"libnova\",");
+    printf("\"model\":\"Sinnott_bisection\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double M_rad, e;
+        if (scanf("%lf %lf", &M_rad, &e) != 2) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        /* libnova uses degrees */
+        double M_deg = M_rad * (180.0 / M_PI);
+        double E_deg = ln_solve_kepler(e, M_deg);
+        double nu_deg = ln_get_ell_true_anomaly(e, E_deg);
+
+        double E_rad  = E_deg  * (M_PI / 180.0);
+        double nu_rad = nu_deg * (M_PI / 180.0);
+
+        /* Self-consistency: recompute M from E */
+        double residual = fabs(E_rad - e * sin(E_rad) - M_rad);
+
+        if (i > 0) printf(",\n");
+        printf("{\"M_rad\":%.17e,\"e\":%.17e,", M_rad, e);
+        printf("\"E_rad\":%.17e,\"nu_rad\":%.17e,", E_rad, nu_rad);
+        printf("\"residual_rad\":%.17e,\"iters\":-1,\"converged\":%s}",
+               residual, residual < 1e-6 ? "true" : "false");
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
 /* Performance timing                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -285,6 +506,16 @@ int main(void) {
         run_frame_rotation_bpn();
     } else if (strcmp(experiment, "gmst_era") == 0) {
         run_gmst_era();
+    } else if (strcmp(experiment, "equ_ecl") == 0) {
+        run_equ_ecl();
+    } else if (strcmp(experiment, "equ_horizontal") == 0) {
+        run_equ_horizontal();
+    } else if (strcmp(experiment, "solar_position") == 0) {
+        run_solar_position();
+    } else if (strcmp(experiment, "lunar_position") == 0) {
+        run_lunar_position();
+    } else if (strcmp(experiment, "kepler_solver") == 0) {
+        run_kepler_solver();
     } else if (strcmp(experiment, "frame_rotation_bpn_perf") == 0) {
         run_frame_rotation_bpn_perf();
     } else {

@@ -6,9 +6,15 @@ Date: 2026-02-12
 
 | Library | Ang p50 (mas) | Ang p99 (mas) | Ang max (mas) | Matrix Frob p50 | Closure p99 (rad) | Perf (ns/op) | Speedup vs ref |
 |---------|---------------|---------------|---------------|-----------------|-------------------|--------------|----------------|
-| siderust | 43.57 | 290.51 | 292.78 | 0.00 | 0.00 | 4110.0 | 18.0× |
-| astropy | 0.00 | 4.36 | 5.32 | 0.00 | 0.00 | 44706.3 | 1.7× |
-| libnova | 33.81 | 1090.59 | 1313.50 | — | 0.00 | 7634.4 | 9.7× |
+| siderust | 43.74 | 91.43 | 288.30 | 0.00 | 0.00 | — | — |
+| astropy | 0.00 | 4.35 | 4.35 | 0.00 | 0.00 | — | — |
+| libnova | 35.98 | 438.79 | 1246.57 | — | 0.00 | — | — |
+
+### Feature / Model Parity Matrix
+
+| Experiment | erfa | astropy | libnova | siderust |
+|------------|---|---|---|---|
+| frame_rotation_bpn | IAU 2006/2000A bias-precession-nutation (eraPnm... | IAU 2006/2000A via bundled ERFA (erfa.pnm06a) | Meeus precession (ζ,z,θ Equ 20.3) + IAU 1980 nu... | IERS 2003 frame bias + Meeus precession (ζ,z,θ)... |
 
 
 ## Alignment Checklist

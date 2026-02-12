@@ -1,5 +1,5 @@
 {
-  "experiment": "gmst_era",
+  "experiment": "solar_position",
   "candidate_library": "astropy",
   "reference_library": "erfa",
   "alignment": {
@@ -18,14 +18,14 @@
     },
     "geodesy": "not applicable (direction-only experiment)",
     "refraction": "disabled",
-    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "ephemeris_source": "VSOP87 (analytic, all libraries)",
     "models": {
-      "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
-      "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
-      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
-      "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)"
+      "erfa": "VSOP87 via eraEpv00: heliocentric Earth \u2192 geocentric Sun (negate); BCRS equatorial output",
+      "siderust": "VSOP87 via Sun::get_apparent_geocentric_equ (includes aberration + FK5)",
+      "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
+      "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)"
     },
-    "mode": "common_denominator"
+    "note": "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). Differences reflect VSOP87 truncation levels and aberration correction details."
   },
   "inputs": {
     "count": 200,
@@ -34,7 +34,15 @@
   "accuracy": {
     "reference": "erfa",
     "candidate": "astropy",
-    "gmst_error_rad": {
+    "angular_sep_arcsec": {
+      "p50": 0.0,
+      "p90": 0.003073585126505738,
+      "p99": 0.003073585126505738,
+      "max": 0.003073585126505738,
+      "mean": 0.0006915566534637911,
+      "rms": 0.0014579294373262346
+    },
+    "signed_ra_error_arcsec": {
       "p50": 0.0,
       "p90": 0.0,
       "p99": 0.0,
@@ -42,7 +50,7 @@
       "mean": 0.0,
       "rms": 0.0
     },
-    "gmst_error_arcsec": {
+    "signed_dec_error_arcsec": {
       "p50": 0.0,
       "p90": 0.0,
       "p99": 0.0,
@@ -50,7 +58,8 @@
       "mean": 0.0,
       "rms": 0.0
     },
-    "era_error_rad": {
+    "nan_count": 0,
+    "dist_au_diff": {
       "p50": 0.0,
       "p90": 0.0,
       "p99": 0.0,
@@ -60,7 +69,7 @@
     }
   },
   "run_metadata": {
-    "date": "2026-02-12T20:32:19Z",
+    "date": "2026-02-12T20:32:20Z",
     "git_shas": {
       "lab": "14fe1b43f02a",
       "siderust": "7e2e9213ef41",

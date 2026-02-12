@@ -1,5 +1,5 @@
 {
-  "experiment": "gmst_era",
+  "experiment": "equ_horizontal",
   "candidate_library": "siderust",
   "reference_library": "erfa",
   "alignment": {
@@ -20,12 +20,12 @@
     "refraction": "disabled",
     "ephemeris_source": "not applicable (no aberration/parallax)",
     "models": {
-      "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
-      "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
-      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
-      "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)"
+      "erfa": "Spherical trig via eraHd2ae / eraAe2hd; GAST via eraGst06a; no refraction",
+      "siderust": "Manual spherical trig matching ERFA formula; GAST from GST polynomial",
+      "astropy": "eraHd2ae / eraAe2hd via bundled ERFA; GAST via eraGst06a",
+      "libnova": "ln_get_hrz_from_equ / ln_get_equ_from_hrz; convention fix: az_erfa = (360 - az_ln + 180) % 360"
     },
-    "mode": "common_denominator"
+    "note": "Azimuth convention: ERFA 0\u00b0=North CW; libnova 0\u00b0=South. All adapters use the same spherical trig, differences arise from GAST model. No atmospheric refraction applied."
   },
   "inputs": {
     "count": 200,
@@ -34,33 +34,34 @@
   "accuracy": {
     "reference": "erfa",
     "candidate": "siderust",
-    "gmst_error_rad": {
-      "p50": 1.2429570317440408e-07,
-      "p90": 2.897455655404002e-07,
-      "p99": 3.396441833669518e-07,
-      "max": 1.3857215659385247e-06,
-      "mean": 1.5220759377914534e-07,
-      "rms": 2.1673053233072757e-07
+    "angular_sep_arcsec": {
+      "p50": 8.181803796409007,
+      "p90": 14.3027209633524,
+      "p99": 16.63823876013797,
+      "max": 16.880871596009293,
+      "mean": 8.213017168315675,
+      "rms": 9.395272283346818
     },
-    "gmst_error_arcsec": {
-      "p50": 0.02563782913261506,
-      "p90": 0.05976431293714601,
-      "p99": 0.07005664167513759,
-      "max": 0.28582559031073274,
-      "mean": 0.031395069840192164,
-      "rms": 0.04470388125902757
+    "signed_ra_error_arcsec": {
+      "p50": 5.415675911481011,
+      "p90": 20.188902786545672,
+      "p99": 35.72648187700803,
+      "max": 63.571824920992,
+      "mean": -0.17553945158553547,
+      "rms": 11.872493375889244
     },
-    "era_error_rad": {
-      "p50": 2.4016344468691386e-12,
-      "p90": 1.1379341913198004e-11,
-      "p99": 1.6348735698556987e-11,
-      "max": 2.55298004958604e-11,
-      "mean": 4.2643888420457185e-12,
-      "rms": 6.208867865697386e-12
-    }
+    "signed_dec_error_arcsec": {
+      "p50": 4.494217477733519,
+      "p90": 11.39392273378693,
+      "p99": 15.439863179337957,
+      "max": 16.619274848547576,
+      "mean": 0.25362115539095137,
+      "rms": 6.672346012343215
+    },
+    "nan_count": 0
   },
   "run_metadata": {
-    "date": "2026-02-12T20:32:19Z",
+    "date": "2026-02-12T20:32:20Z",
     "git_shas": {
       "lab": "14fe1b43f02a",
       "siderust": "7e2e9213ef41",

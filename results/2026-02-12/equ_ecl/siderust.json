@@ -1,5 +1,5 @@
 {
-  "experiment": "gmst_era",
+  "experiment": "equ_ecl",
   "candidate_library": "siderust",
   "reference_library": "erfa",
   "alignment": {
@@ -20,12 +20,12 @@
     "refraction": "disabled",
     "ephemeris_source": "not applicable (no aberration/parallax)",
     "models": {
-      "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
-      "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
-      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
-      "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)"
+      "erfa": "IAU 2006 obliquity-based transform (eraEqec06 / eraEceq06)",
+      "siderust": "IAU 2006 obliquity, Ecliptic frame via Transform trait",
+      "astropy": "IAU 2006 via bundled ERFA (erfa.eqec06 / erfa.eceq06)",
+      "libnova": "Meeus obliquity (Eq 22.2) via ln_get_ecl_from_equ / ln_get_equ_from_ecl"
     },
-    "mode": "common_denominator"
+    "note": "ERFA and Astropy share the same IAU 2006 obliquity model (reference). Siderust uses IAU 2006 obliquity with its own Ecliptic frame implementation. libnova uses Meeus obliquity polynomial \u2014 expect ~arcsec-level differences."
   },
   "inputs": {
     "count": 200,
@@ -34,33 +34,34 @@
   "accuracy": {
     "reference": "erfa",
     "candidate": "siderust",
-    "gmst_error_rad": {
-      "p50": 1.2429570317440408e-07,
-      "p90": 2.897455655404002e-07,
-      "p99": 3.396441833669518e-07,
-      "max": 1.3857215659385247e-06,
-      "mean": 1.5220759377914534e-07,
-      "rms": 2.1673053233072757e-07
+    "angular_sep_arcsec": {
+      "p50": 1630.8713787812426,
+      "p90": 3894.8147763600314,
+      "p99": 4643.424933006466,
+      "max": 4786.504832107117,
+      "mean": 1935.0638890350506,
+      "rms": 2338.0524683971666
     },
-    "gmst_error_arcsec": {
-      "p50": 0.02563782913261506,
-      "p90": 0.05976431293714601,
-      "p99": 0.07005664167513759,
-      "max": 0.28582559031073274,
-      "mean": 0.031395069840192164,
-      "rms": 0.04470388125902757
+    "signed_ra_error_arcsec": {
+      "p50": 2409.337894796053,
+      "p90": 4492.89812979312,
+      "p99": 4993.49985090538,
+      "max": 5032.389054177557,
+      "mean": -2439.4083890047896,
+      "rms": 2877.0977944523297
     },
-    "era_error_rad": {
-      "p50": 2.4016344468691386e-12,
-      "p90": 1.1379341913198004e-11,
-      "p99": 1.6348735698556987e-11,
-      "max": 2.55298004958604e-11,
-      "mean": 4.2643888420457185e-12,
-      "rms": 6.208867865697386e-12
-    }
+    "signed_dec_error_arcsec": {
+      "p50": 1.0827124822142016,
+      "p90": 2.868907688148224,
+      "p99": 3.917442048308397,
+      "max": 4.340501147503496,
+      "mean": -0.11715543088670045,
+      "rms": 1.6955795607824813
+    },
+    "nan_count": 0
   },
   "run_metadata": {
-    "date": "2026-02-12T20:32:19Z",
+    "date": "2026-02-12T20:32:20Z",
     "git_shas": {
       "lab": "14fe1b43f02a",
       "siderust": "7e2e9213ef41",

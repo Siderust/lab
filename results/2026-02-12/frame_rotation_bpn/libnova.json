@@ -29,7 +29,7 @@
     "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). Differences measure the model gap, not implementation bugs."
   },
   "inputs": {
-    "count": 100,
+    "count": 200,
     "seed": 42,
     "epoch_range": [
       "JD 2415020.0",
@@ -40,81 +40,76 @@
     "reference": "erfa",
     "candidate": "libnova",
     "angular_error_mas": {
-      "p50": 33.80914773165219,
-      "p90": 79.33778176022109,
-      "p95": 94.98589252232107,
-      "p99": 1090.5872627290512,
-      "max": 1313.5001189957275,
+      "p50": 35.975391555800925,
+      "p90": 78.81553289677498,
+      "p95": 91.35833882252557,
+      "p99": 438.7886145910985,
+      "max": 1246.565193006064,
       "min": 3.073585126505738,
-      "mean": 66.63432012833873,
-      "rms": 181.5898439867835
+      "mean": 55.4988565937848,
+      "rms": 134.653901198764
     },
     "closure_error_rad": {
       "p50": 0.0,
       "p90": 0.0,
-      "p95": 7.450580596923405e-10,
-      "p99": 1.2380396558380601e-06,
+      "p95": 0.0,
+      "p99": 5.53578321829399e-08,
       "max": 4.539427879247898e-06,
       "min": 0.0,
-      "mean": 5.794995925937065e-08,
-      "rms": 4.696655957923994e-07
+      "mean": 4.042260663240218e-08,
+      "rms": 4.031569676718167e-07
     },
     "matrix_frobenius": null,
     "nan_count": 0,
     "inf_count": 0,
     "worst_cases": [
       {
-        "jd_tt": 2488069.5,
-        "angular_error_mas": 1313.5001189957275
+        "jd_tt": 2415020.0,
+        "angular_error_mas": 1246.565193006064
       },
       {
-        "jd_tt": 2415020.0,
-        "angular_error_mas": 1088.3356177162552
+        "jd_tt": 2488069.5,
+        "angular_error_mas": 1169.3527221930178
       },
       {
         "jd_tt": 2452968.6148947133,
         "angular_error_mas": 431.40917916078286
       },
       {
-        "jd_tt": 2462181.423602307,
-        "angular_error_mas": 103.04535067426525
-      },
-      {
-        "jd_tt": 2462146.487893148,
-        "angular_error_mas": 97.87329813230856
+        "jd_tt": 2452505.423990906,
+        "angular_error_mas": 308.1719363470238
       },
       {
         "jd_tt": 2462235.3819180597,
-        "angular_error_mas": 94.83392380600594
+        "angular_error_mas": 106.78220410987099
       },
       {
-        "jd_tt": 2457610.84628271,
-        "angular_error_mas": 84.28575204901374
+        "jd_tt": 2462146.487893148,
+        "angular_error_mas": 102.58593977872172
       },
       {
-        "jd_tt": 2461331.374686888,
-        "angular_error_mas": 83.49749122608138
+        "jd_tt": 2461986.3951214766,
+        "angular_error_mas": 100.6335141393197
       },
       {
-        "jd_tt": 2460613.7685671085,
-        "angular_error_mas": 80.38468176484963
+        "jd_tt": 2462084.993659301,
+        "angular_error_mas": 92.71840287768379
       },
       {
-        "jd_tt": 2460560.410377415,
-        "angular_error_mas": 79.4983847602452
+        "jd_tt": 2461582.1997930952,
+        "angular_error_mas": 92.00241993975047
+      },
+      {
+        "jd_tt": 2461500.7729184288,
+        "angular_error_mas": 91.84826889049441
       }
     ]
   },
-  "performance": {
-    "per_op_ns": 7634.4,
-    "throughput_ops_s": 130986,
-    "total_ns": 763442,
-    "batch_size": 100
-  },
+  "performance": {},
   "run_metadata": {
-    "date": "2026-02-12T19:30:32Z",
+    "date": "2026-02-12T20:32:19Z",
     "git_shas": {
-      "lab": "15b1f8a8105a",
+      "lab": "14fe1b43f02a",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -126,9 +121,5 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
-  },
-  "reference_performance": {
-    "per_op_ns": 74169.4,
-    "throughput_ops_s": 13483
   }
 }

@@ -1,6 +1,6 @@
 {
-  "experiment": "gmst_era",
-  "candidate_library": "astropy",
+  "experiment": "kepler_solver",
+  "candidate_library": "libnova",
   "reference_library": "erfa",
   "alignment": {
     "units": {
@@ -20,12 +20,12 @@
     "refraction": "disabled",
     "ephemeris_source": "not applicable (no aberration/parallax)",
     "models": {
-      "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
-      "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
-      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
-      "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)"
+      "erfa": "Newton-Raphson iteration (100 iters, tol 1e-15)",
+      "siderust": "solve_keplers_equation (internal algorithm)",
+      "astropy": "Newton-Raphson iteration in Python (100 iters, tol 1e-15)",
+      "libnova": "Sinnott bisection via ln_solve_kepler (internal convergence ~1e-6 deg)"
     },
-    "mode": "common_denominator"
+    "note": "Kepler's equation M = E - e*sin(E) is solved for E given (M, e). Self-consistency M_reconstructed = E - e*sin(E) is the primary metric. libnova uses a bisection method with lower convergence tolerance."
   },
   "inputs": {
     "count": 200,
@@ -33,34 +33,35 @@
   },
   "accuracy": {
     "reference": "erfa",
-    "candidate": "astropy",
-    "gmst_error_rad": {
+    "candidate": "libnova",
+    "E_error_rad": {
       "p50": 0.0,
-      "p90": 0.0,
-      "p99": 0.0,
-      "max": 0.0,
-      "mean": 0.0,
-      "rms": 0.0
+      "p90": 8.881784197001252e-16,
+      "p99": 0.0006739566383715022,
+      "max": 0.38255940365110774,
+      "mean": -0.0022497753374397227,
+      "rms": 0.0274676057225509
     },
-    "gmst_error_arcsec": {
+    "nu_error_rad": {
       "p50": 0.0,
-      "p90": 0.0,
-      "p99": 0.0,
-      "max": 0.0,
-      "mean": 0.0,
-      "rms": 0.0
+      "p90": 8.881784197001252e-16,
+      "p99": 6.519146148583243e-06,
+      "max": 0.02192921474543752,
+      "mean": -0.00011290564679822356,
+      "rms": 0.0015513146876371964
     },
-    "era_error_rad": {
+    "consistency_error_rad": {
       "p50": 0.0,
-      "p90": 0.0,
-      "p99": 0.0,
-      "max": 0.0,
-      "mean": 0.0,
-      "rms": 0.0
-    }
+      "p90": 8.881784197001252e-16,
+      "p99": 1.3322676295501878e-15,
+      "max": 1.3322676295501878e-15,
+      "mean": 1.956270690791614e-16,
+      "rms": 3.747265842513291e-16
+    },
+    "nan_count": 0
   },
   "run_metadata": {
-    "date": "2026-02-12T20:32:19Z",
+    "date": "2026-02-12T20:32:21Z",
     "git_shas": {
       "lab": "14fe1b43f02a",
       "siderust": "7e2e9213ef41",

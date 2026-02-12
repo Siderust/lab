@@ -3,24 +3,23 @@
 /*
  * ERFA Adapter for the Siderust Lab
  *
- * Reads a JSON-ish line-protocol from stdin, runs ERFA transformations,
+ * Reads line-protocol from stdin, runs ERFA transformations,
  * writes JSON results to stdout.
  *
  * Protocol (one experiment per invocation):
- *   Line 1: experiment name (e.g. "frame_rotation_bpn")
+ *   Line 1: experiment name
  *   Line 2: N (number of test cases)
  *   Lines 3..N+2: space-separated values depending on experiment
  *
- * Output: JSON to stdout.
- *
  * Supported experiments:
- *   frame_rotation_bpn  — Bias-Precession-Nutation matrix (GCRS→CIRS)
- *     Input per line: jd_tt  vx vy vz
- *     Output: transformed direction + matrix elements
- *
- *   gmst_era — Greenwich Mean Sidereal Time and Earth Rotation Angle
- *     Input per line: jd_ut1  jd_tt
- *     Output: GMST (rad), ERA (rad)
+ *   frame_rotation_bpn      — BPN matrix (GCRS→CIRS)
+ *   gmst_era                — GMST & ERA
+ *   equ_ecl                 — Equatorial ↔ Ecliptic
+ *   equ_horizontal          — Equatorial → Horizontal (AltAz)
+ *   solar_position          — Sun geocentric RA/Dec
+ *   lunar_position          — Moon geocentric RA/Dec (simplified Meeus)
+ *   kepler_solver           — Kepler equation M→E→ν
+ *   frame_rotation_bpn_perf — BPN performance timing
  */
 
 #include <stdio.h>
@@ -29,6 +28,10 @@
 #include <math.h>
 #include <time.h>
 #include "erfa.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -52,6 +55,13 @@ static double ang_sep(const double a[3], const double b[3]) {
     if (dot >  1.0) dot =  1.0;
     if (dot < -1.0) dot = -1.0;
     return acos(dot);
+}
+
+/* Normalize angle to [0, 2π) */
+static double normalize_angle(double a) {
+    a = fmod(a, 2.0 * M_PI);
+    if (a < 0.0) a += 2.0 * M_PI;
+    return a;
 }
 
 /* ------------------------------------------------------------------ */
@@ -154,6 +164,260 @@ static void run_gmst_era(void) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Experiment: equ_ecl                                                 */
+/* Equatorial (ICRS RA/Dec) ↔ Ecliptic (lon/lat), IAU 2006             */
+/* Input per line: jd_tt  ra_rad  dec_rad                              */
+/* ------------------------------------------------------------------ */
+
+static void run_equ_ecl(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"equ_ecl\",\"library\":\"erfa\",");
+    printf("\"model\":\"IAU_2006_ecliptic\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, ra_rad, dec_rad;
+        if (scanf("%lf %lf %lf", &jd_tt, &ra_rad, &dec_rad) != 3) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+
+        /* Forward: Equatorial → Ecliptic */
+        double ecl_lon, ecl_lat;
+        eraEqec06(date1, date2, ra_rad, dec_rad, &ecl_lon, &ecl_lat);
+
+        /* Closure: Ecliptic → Equatorial */
+        double ra_back, dec_back;
+        eraEceq06(date1, date2, ecl_lon, ecl_lat, &ra_back, &dec_back);
+
+        double v_in[3]   = { cos(dec_rad)*cos(ra_rad), cos(dec_rad)*sin(ra_rad), sin(dec_rad) };
+        double v_back[3]  = { cos(dec_back)*cos(ra_back), cos(dec_back)*sin(ra_back), sin(dec_back) };
+        double closure_rad = ang_sep(v_in, v_back);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"ra_rad\":%.17e,\"dec_rad\":%.17e,", jd_tt, ra_rad, dec_rad);
+        printf("\"ecl_lon_rad\":%.17e,\"ecl_lat_rad\":%.17e,", ecl_lon, ecl_lat);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: equ_horizontal                                          */
+/* Equatorial (RA/Dec) → Horizontal (Az/Alt) via GAST + eraHd2ae       */
+/* Input per line: jd_ut1 jd_tt ra_rad dec_rad obs_lon_rad obs_lat_rad */
+/* ------------------------------------------------------------------ */
+
+static void run_equ_horizontal(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"equ_horizontal\",\"library\":\"erfa\",");
+    printf("\"model\":\"eraHd2ae_GAST\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_ut1, jd_tt, ra_rad, dec_rad, obs_lon, obs_lat;
+        if (scanf("%lf %lf %lf %lf %lf %lf", &jd_ut1, &jd_tt, &ra_rad, &dec_rad,
+                  &obs_lon, &obs_lat) != 6) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double ut1_hi = 2451545.0, ut1_lo = jd_ut1 - 2451545.0;
+        double tt_hi  = 2451545.0, tt_lo  = jd_tt  - 2451545.0;
+
+        double gast = eraGst06a(ut1_hi, ut1_lo, tt_hi, tt_lo);
+        double last = gast + obs_lon;
+        double ha   = last - ra_rad;
+
+        double az, alt;
+        eraHd2ae(ha, dec_rad, obs_lat, &az, &alt);
+
+        /* Closure */
+        double ha_back, dec_back;
+        eraAe2hd(az, alt, obs_lat, &ha_back, &dec_back);
+        double ra_back = last - ha_back;
+        double v_in[3]  = { cos(dec_rad)*cos(ra_rad), cos(dec_rad)*sin(ra_rad), sin(dec_rad) };
+        double v_bk[3]  = { cos(dec_back)*cos(ra_back), cos(dec_back)*sin(ra_back), sin(dec_back) };
+        double closure_rad = ang_sep(v_in, v_bk);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_ut1\":%.15f,\"jd_tt\":%.15f,", jd_ut1, jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,", ra_rad, dec_rad);
+        printf("\"obs_lon_rad\":%.17e,\"obs_lat_rad\":%.17e,", obs_lon, obs_lat);
+        printf("\"az_rad\":%.17e,\"alt_rad\":%.17e,", az, alt);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: solar_position                                          */
+/* Apparent geocentric Sun RA/Dec using ERFA epv00                     */
+/* (epv00 returns BCRS-aligned equatorial vectors, not ecliptic)       */
+/* Input per line: jd_tt                                               */
+/* ------------------------------------------------------------------ */
+
+static void run_solar_position(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"solar_position\",\"library\":\"erfa\",");
+    printf("\"model\":\"ERFA_epv00_analytic\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt;
+        if (scanf("%lf", &jd_tt) != 1) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+
+        double pvh[2][3], pvb[2][3];
+        eraEpv00(date1, date2, pvh, pvb);
+
+        /* Sun geocentric ≈ –Earth heliocentric (BCRS equatorial) */
+        double sx = -pvh[0][0], sy = -pvh[0][1], sz = -pvh[0][2];
+        double dist_au = sqrt(sx*sx + sy*sy + sz*sz);
+        double ra  = normalize_angle(atan2(sy, sx));
+        double dec = asin(sz / dist_au);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,", jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,\"dist_au\":%.17e}", ra, dec, dist_au);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: lunar_position                                          */
+/* Geocentric Moon RA/Dec — simplified Meeus Ch.47 (major terms).      */
+/* ERFA has no dedicated Moon function; this is approximate (~10').     */
+/* Input per line: jd_tt                                               */
+/* ------------------------------------------------------------------ */
+
+static void run_lunar_position(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"lunar_position\",\"library\":\"erfa\",");
+    printf("\"model\":\"Meeus_Ch47_simplified\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt;
+        if (scanf("%lf", &jd_tt) != 1) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+        double T = date2 / 36525.0;
+
+        /* Mean elements (degrees) — Meeus Ch 47 */
+        double Lp = fmod(218.3164477 + 481267.88123421*T
+                    - 0.0015786*T*T + T*T*T/538841.0
+                    - T*T*T*T/65194000.0, 360.0);
+        double D  = fmod(297.8501921 + 445267.1114034*T
+                    - 0.0018819*T*T + T*T*T/545868.0
+                    - T*T*T*T/113065000.0, 360.0);
+        double M  = fmod(357.5291092 + 35999.0502909*T
+                    - 0.0001536*T*T + T*T*T/24490000.0, 360.0);
+        double Mp = fmod(134.9633964 + 477198.8675055*T
+                    + 0.0087414*T*T + T*T*T/69699.0
+                    - T*T*T*T/14712000.0, 360.0);
+        double F  = fmod(93.2720950 + 483202.0175233*T
+                    - 0.0036539*T*T - T*T*T/3526000.0
+                    + T*T*T*T/863310000.0, 360.0);
+
+        double Lp_r = Lp*M_PI/180.0, D_r = D*M_PI/180.0;
+        double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
+
+        /* Major longitude terms (×1e-6 deg) */
+        double sum_l = 6288774.0*sin(Mp_r)
+                     + 1274027.0*sin(2.0*D_r - Mp_r)
+                     +  658314.0*sin(2.0*D_r)
+                     +  213618.0*sin(2.0*Mp_r)
+                     -  185116.0*sin(M_r)
+                     -  114332.0*sin(2.0*F_r);
+
+        /* Major latitude terms */
+        double sum_b = 5128122.0*sin(F_r)
+                     +  280602.0*sin(Mp_r + F_r)
+                     +  277693.0*sin(Mp_r - F_r)
+                     +  173237.0*sin(2.0*D_r - F_r);
+
+        /* Major distance terms (km) */
+        double sum_r = -20905355.0*cos(Mp_r)
+                     -  3699111.0*cos(2.0*D_r - Mp_r)
+                     -  2955968.0*cos(2.0*D_r)
+                     -   569925.0*cos(2.0*Mp_r);
+
+        double ecl_lon = (Lp + sum_l / 1000000.0) * M_PI / 180.0;
+        double ecl_lat = (sum_b / 1000000.0) * M_PI / 180.0;
+        double dist_km = 385000.56 + sum_r / 1000.0;
+
+        /* Ecliptic → equatorial using mean obliquity */
+        double eps = eraObl06(date1, date2);  /* radians */
+        double ce = cos(eps), se = sin(eps);
+        double ra  = normalize_angle(atan2(sin(ecl_lon)*ce - tan(ecl_lat)*se, cos(ecl_lon)));
+        double dec = asin(sin(ecl_lat)*ce + cos(ecl_lat)*se*sin(ecl_lon));
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,", jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,\"dist_km\":%.17e}", ra, dec, dist_km);
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: kepler_solver                                           */
+/* Kepler equation M→E→ν self-consistency                              */
+/* Input per line: M_rad  e                                            */
+/* ------------------------------------------------------------------ */
+
+static void run_kepler_solver(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"kepler_solver\",\"library\":\"erfa\",");
+    printf("\"model\":\"Newton_Raphson\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double M_rad, e;
+        if (scanf("%lf %lf", &M_rad, &e) != 2) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        /* Newton-Raphson: solve M = E - e·sin(E) */
+        double E = M_rad;
+        int converged = 1, iters;
+        for (iters = 0; iters < 100; iters++) {
+            double f  = E - e * sin(E) - M_rad;
+            double fp = 1.0 - e * cos(E);
+            if (fabs(fp) < 1e-30) { converged = 0; break; }
+            double dE = f / fp;
+            E -= dE;
+            if (fabs(dE) < 1e-15) break;
+        }
+        if (iters >= 100) converged = 0;
+
+        /* True anomaly */
+        double nu = 2.0 * atan2(sqrt(1.0+e)*sin(E/2.0), sqrt(1.0-e)*cos(E/2.0));
+
+        /* Self-consistency residual */
+        double residual = fabs(E - e*sin(E) - M_rad);
+
+        if (i > 0) printf(",\n");
+        printf("{\"M_rad\":%.17e,\"e\":%.17e,", M_rad, e);
+        printf("\"E_rad\":%.17e,\"nu_rad\":%.17e,", E, nu);
+        printf("\"residual_rad\":%.17e,\"iters\":%d,\"converged\":%s}",
+               residual, iters, converged ? "true" : "false");
+    }
+    printf("\n]}\n");
+}
+
+/* ------------------------------------------------------------------ */
 /* Performance timing helper                                           */
 /* ------------------------------------------------------------------ */
 
@@ -222,6 +486,16 @@ int main(void) {
         run_frame_rotation_bpn();
     } else if (strcmp(experiment, "gmst_era") == 0) {
         run_gmst_era();
+    } else if (strcmp(experiment, "equ_ecl") == 0) {
+        run_equ_ecl();
+    } else if (strcmp(experiment, "equ_horizontal") == 0) {
+        run_equ_horizontal();
+    } else if (strcmp(experiment, "solar_position") == 0) {
+        run_solar_position();
+    } else if (strcmp(experiment, "lunar_position") == 0) {
+        run_lunar_position();
+    } else if (strcmp(experiment, "kepler_solver") == 0) {
+        run_kepler_solver();
     } else if (strcmp(experiment, "frame_rotation_bpn_perf") == 0) {
         run_frame_rotation_bpn_perf();
     } else {
