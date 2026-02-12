@@ -1,45 +1,33 @@
+/**
+ * RunOverview — Primary dashboard for a single benchmark run.
+ *
+ * Sections:
+ *  1. Overall ranking summary cards
+ *  2. Performance comparison (grouped bar chart, log-scale)
+ *  3. Accuracy comparison (grouped bar chart, log-scale)
+ *  4. Detailed results table with rankings
+ *  5. Cross-comparison matrix (pairwise wins + heatmaps)
+ *  6. Run metadata
+ */
+
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trophy, Zap, Target, Scale } from "lucide-react";
 import { fetchRun } from "../api/client";
-import type { ExperimentResult } from "../api/types";
+import { analyzeRun, libColor } from "../lib/analytics";
 import Header from "../components/layout/Header";
+import PerformanceChart from "../components/charts/PerformanceChart";
+import AccuracyChart from "../components/charts/AccuracyChart";
+import ComparisonMatrix from "../components/charts/ComparisonMatrix";
 import SummaryTable from "../components/tables/SummaryTable";
-import ParityMatrix from "../components/tables/ParityMatrix";
-import ParetoPlot from "../components/charts/ParetoPlot";
-import AlertCard from "../components/cards/AlertCard";
-
-/** Group experiments by "family" for Pareto plots */
-const FAMILIES: Record<string, string[]> = {
-  Frames: ["frame_rotation_bpn", "equ_ecl", "equ_horizontal"],
-  Time: ["gmst_era"],
-  Ephemerides: ["solar_position", "lunar_position"],
-  Orbits: ["kepler_solver"],
-};
-
-/**
- * Extract the primary p99 error and ns/op from an ExperimentResult
- * so we can plot Pareto points.
- */
-function paretoPoint(r: ExperimentResult) {
-  const acc = r.accuracy as Record<string, Record<string, number | null> | undefined>;
-  const perf = r.performance as Record<string, unknown>;
-
-  let error: number | null = null;
-  if (acc.angular_error_mas?.p99 != null) error = acc.angular_error_mas.p99;
-  else if (acc.gmst_error_arcsec?.p99 != null) error = acc.gmst_error_arcsec.p99;
-  else if (acc.angular_sep_arcsec?.p99 != null) error = acc.angular_sep_arcsec.p99;
-  else if (acc.E_error_rad?.p99 != null) error = acc.E_error_rad.p99;
-
-  const latency = (perf?.per_op_ns as number) ?? null;
-
-  if (error == null || latency == null || error === 0) return null;
-  return { library: r.candidate_library, error, latency };
-}
 
 export default function RunOverview() {
   const { runId } = useParams<{ runId: string }>();
-  const { data: run, isLoading, error } = useQuery({
+  const {
+    data: run,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["run", runId],
     queryFn: () => fetchRun(runId!),
     enabled: !!runId,
@@ -49,33 +37,33 @@ export default function RunOverview() {
   if (error || !run)
     return <p className="text-red-400">Failed to load run {runId}.</p>;
 
-  // Compute alerts
-  const alerts: { level: "info" | "warn" | "error"; message: string }[] = [];
+  const analytics = analyzeRun(run);
+
+  // Count data quality issues
+  const alerts: string[] = [];
   for (const [exp, results] of Object.entries(run.experiments)) {
     for (const r of results) {
       const acc = r.accuracy as Record<string, unknown>;
       const nan = (acc.nan_count as number) ?? 0;
       const inf = (acc.inf_count as number) ?? 0;
-      if (nan > 0) alerts.push({ level: "warn", message: `${exp}/${r.candidate_library}: ${nan} NaN results` });
-      if (inf > 0) alerts.push({ level: "warn", message: `${exp}/${r.candidate_library}: ${inf} Inf results` });
-      const perf = r.performance as Record<string, unknown>;
-      const hasPerf = perf && Object.keys(perf).length > 0 && perf.per_op_ns != null;
-      if (!hasPerf) alerts.push({ level: "info", message: `${exp}/${r.candidate_library}: no performance data` });
+      if (nan > 0)
+        alerts.push(
+          `${exp}/${r.candidate_library}: ${nan} NaN results`,
+        );
+      if (inf > 0)
+        alerts.push(
+          `${exp}/${r.candidate_library}: ${inf} Inf results`,
+        );
     }
   }
-  // Deduplicate "no performance data" if all experiments lack it
-  const perfMissing = alerts.filter((a) => a.message.includes("no performance data"));
-  const otherAlerts = alerts.filter((a) => !a.message.includes("no performance data"));
-  const deduped =
-    perfMissing.length === Object.values(run.experiments).flat().length
-      ? [
-          ...otherAlerts,
-          { level: "info" as const, message: "No performance data in this run." },
-        ]
-      : alerts;
+
+  // Count experiments with performance data
+  const expWithPerf = analytics.experiments.filter(
+    (e) => e.performance.filter((p) => !p.isReference).length > 0,
+  ).length;
 
   return (
-    <div>
+    <div className="space-y-8">
       <Header
         title={`Run ${run.id}`}
         subtitle={`${run.timestamp ?? ""} \u2014 ${run.machine ?? "unknown machine"}`}
@@ -90,66 +78,99 @@ export default function RunOverview() {
         }
       />
 
-      {/* Alerts */}
-      {deduped.length > 0 && (
-        <div className="space-y-2 mb-6">
-          {deduped.slice(0, 5).map((a, i) => (
-            <AlertCard key={i} level={a.level} message={a.message} />
-          ))}
-          {deduped.length > 5 && (
-            <p className="text-xs text-gray-500">
-              ... and {deduped.length - 5} more alerts
-            </p>
-          )}
+      {/* ─── Data quality alerts ──────────────────────────────── */}
+      {alerts.length > 0 && (
+        <div className="rounded-xl border border-yellow-700/40 bg-yellow-950/30 px-4 py-3">
+          <p className="text-xs font-medium text-yellow-300 mb-1">
+            Data Quality Warnings
+          </p>
+          <ul className="text-xs text-yellow-200/70 space-y-0.5">
+            {alerts.slice(0, 5).map((a, i) => (
+              <li key={i}>{a}</li>
+            ))}
+            {alerts.length > 5 && (
+              <li className="text-yellow-400/50">
+                ...and {alerts.length - 5} more
+              </li>
+            )}
+          </ul>
         </div>
       )}
 
-      {/* Summary Table */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold text-white mb-3">
-          Summary (Experiments &times; Libraries)
+      {/* ─── Overall ranking cards ────────────────────────────── */}
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <Trophy className="h-5 w-5 text-yellow-400" />
+          Overall Rankings
         </h2>
-        <SummaryTable runId={run.id} experiments={run.experiments} />
-      </section>
-
-      {/* Pareto Plots per Family */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold text-white mb-3">
-          Pareto: Accuracy vs Performance
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Object.entries(FAMILIES).map(([family, expNames]) => {
-            const points = expNames.flatMap((exp) =>
-              (run.experiments[exp] ?? [])
-                .map(paretoPoint)
-                .filter((p): p is NonNullable<typeof p> => p !== null)
-            );
-            return (
-              <ParetoPlot
-                key={family}
-                points={points}
-                title={`${family}: Error vs Latency`}
-              />
-            );
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <RankingCard
+            icon={<Zap className="h-5 w-5 text-yellow-400" />}
+            title="Fastest Library"
+            library={analytics.overallFastest}
+            subtitle={`Wins ${countWins(analytics, "fastest")} of ${analytics.experiments.length} experiments`}
+            accentColor="yellow"
+          />
+          <RankingCard
+            icon={<Target className="h-5 w-5 text-emerald-400" />}
+            title="Most Accurate Library"
+            library={analytics.overallMostAccurate}
+            subtitle={`Wins ${countWins(analytics, "mostAccurate")} of ${analytics.experiments.length} experiments`}
+            accentColor="emerald"
+          />
+          <RankingCard
+            icon={<Scale className="h-5 w-5 text-blue-400" />}
+            title="Best Tradeoff"
+            library={analytics.overallBestTradeoff}
+            subtitle="Most combined performance + accuracy wins"
+            accentColor="blue"
+          />
         </div>
       </section>
 
-      {/* Parity Matrix */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold text-white mb-3">
-          Feature / Model Parity Matrix
+      {/* ─── Performance comparison ───────────────────────────── */}
+      {expWithPerf > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+            <Zap className="h-5 w-5 text-yellow-400" />
+            Performance Comparison
+          </h2>
+          <PerformanceChart experiments={analytics.experiments} />
+        </section>
+      )}
+
+      {/* ─── Accuracy comparison ──────────────────────────────── */}
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <Target className="h-5 w-5 text-emerald-400" />
+          Accuracy Comparison
         </h2>
-        <ParityMatrix experiments={run.experiments} />
+        <AccuracyChart experiments={analytics.experiments} />
       </section>
 
-      {/* Git SHAs */}
+      {/* ─── Detailed results table ───────────────────────────── */}
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-3">
+          Detailed Results
+        </h2>
+        <SummaryTable runId={run.id} analytics={analytics} />
+      </section>
+
+      {/* ─── Cross-comparison matrix ──────────────────────────── */}
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-3">
+          Cross-Comparison Matrix
+        </h2>
+        <ComparisonMatrix analytics={analytics} />
+      </section>
+
+      {/* ─── Run metadata ─────────────────────────────────────── */}
       {Object.keys(run.git_shas).length > 0 && (
         <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
           <h3 className="text-xs font-medium uppercase text-gray-400 mb-2">
-            Git SHAs
+            Run Metadata
           </h3>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-6">
             {Object.entries(run.git_shas).map(([repo, sha]) => (
               <div key={repo} className="text-xs">
                 <span className="text-gray-400">{repo}:</span>{" "}
@@ -161,4 +182,65 @@ export default function RunOverview() {
       )}
     </div>
   );
+}
+
+// ─── Helper components ───────────────────────────────────────────────
+
+function RankingCard({
+  icon,
+  title,
+  library,
+  subtitle,
+  accentColor,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  library: string | null;
+  subtitle: string;
+  accentColor: "yellow" | "emerald" | "blue";
+}) {
+  const borderColors = {
+    yellow: "border-yellow-600/40",
+    emerald: "border-emerald-600/40",
+    blue: "border-blue-600/40",
+  };
+
+  return (
+    <div
+      className={`rounded-xl border bg-gray-900/60 px-5 py-4 ${borderColors[accentColor]}`}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        {icon}
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+          {title}
+        </p>
+      </div>
+      <p className="text-xl font-bold text-white">
+        {library ? (
+          <span className="flex items-center gap-2">
+            <span
+              className="inline-block w-3 h-3 rounded-full"
+              style={{ backgroundColor: libColor(library) }}
+            />
+            {library}
+          </span>
+        ) : (
+          <span className="text-gray-500">N/A</span>
+        )}
+      </p>
+      <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+    </div>
+  );
+}
+
+function countWins(
+  analytics: ReturnType<typeof analyzeRun>,
+  field: "fastest" | "mostAccurate",
+): number {
+  const target =
+    field === "fastest"
+      ? analytics.overallFastest
+      : analytics.overallMostAccurate;
+  if (!target) return 0;
+  return analytics.experiments.filter((e) => e[field] === target).length;
 }

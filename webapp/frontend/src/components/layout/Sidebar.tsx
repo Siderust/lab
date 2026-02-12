@@ -17,9 +17,14 @@ export default function Sidebar() {
     <aside className="fixed left-0 top-0 h-screen w-56 bg-gray-900 border-r border-gray-800 flex flex-col">
       <div className="flex items-center gap-2 px-5 py-5 border-b border-gray-800">
         <FlaskConical className="h-6 w-6 text-orange-400" />
-        <span className="font-bold text-lg tracking-tight text-white">
-          Siderust Lab
-        </span>
+        <div>
+          <span className="font-bold text-lg tracking-tight text-white block leading-tight">
+            Astro-Tools Lab
+          </span>
+          <span className="text-[10px] text-gray-500 uppercase tracking-widest">
+            Benchmark Platform
+          </span>
+        </div>
       </div>
       <nav className="flex-1 py-4 space-y-1 px-3">
         {links.map((l) => (
@@ -40,7 +45,7 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="px-5 pb-4 text-xs text-gray-600">v0.1.0</div>
+      <div className="px-5 pb-4 text-xs text-gray-600">v1.0.0</div>
     </aside>
   );
 }
