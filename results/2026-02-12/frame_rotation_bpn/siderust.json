@@ -1,0 +1,141 @@
+{
+  "experiment": "frame_rotation_bpn",
+  "candidate_library": "siderust",
+  "reference_library": "erfa",
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "models": {
+      "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
+      "siderust": "IERS 2003 frame bias + Meeus precession (\u03b6,z,\u03b8) + IAU 1980 nutation (63 terms)",
+      "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)"
+    },
+    "mode": "common_denominator",
+    "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). Differences measure the model gap, not implementation bugs."
+  },
+  "inputs": {
+    "count": 10000,
+    "seed": 42,
+    "epoch_range": [
+      "JD 2415020.0",
+      "JD 2488069.5"
+    ]
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "siderust",
+    "angular_error_mas": {
+      "p50": 44.00704186405685,
+      "p90": 72.08196058260738,
+      "p95": 76.22552961370023,
+      "p99": 83.49749122608138,
+      "max": 230.53937414484145,
+      "min": 0.0,
+      "mean": 47.00962193520633,
+      "rms": 50.36749883936754
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 1.4901161193847656e-08,
+      "max": 2.1073424255447017e-08,
+      "min": 0.0,
+      "mean": 6.010462925722114e-10,
+      "rms": 3.0465496033818827e-09
+    },
+    "matrix_frobenius": {
+      "p50": 3.886319933537864e-07,
+      "p90": 5.418232798578173e-07,
+      "p95": 5.632800132415675e-07,
+      "p99": 6.051200409175017e-07,
+      "max": 2.18612908365812e-06,
+      "min": 2.9221245507612153e-07,
+      "mean": 4.0904933970747105e-07,
+      "rms": 4.2188767347974676e-07
+    },
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2415020.0,
+        "angular_error_mas": 230.53937414484145
+      },
+      {
+        "jd_tt": 2488069.5,
+        "angular_error_mas": 166.5418066304111
+      },
+      {
+        "jd_tt": 2462389.1829772806,
+        "angular_error_mas": 92.10504397604916
+      },
+      {
+        "jd_tt": 2462383.4248769055,
+        "angular_error_mas": 91.95106497066969
+      },
+      {
+        "jd_tt": 2462395.375832131,
+        "angular_error_mas": 91.5907739378327
+      },
+      {
+        "jd_tt": 2462416.244273104,
+        "angular_error_mas": 91.12544946809467
+      },
+      {
+        "jd_tt": 2462414.066501506,
+        "angular_error_mas": 90.81390855801224
+      },
+      {
+        "jd_tt": 2462363.77984295,
+        "angular_error_mas": 90.76188110684535
+      },
+      {
+        "jd_tt": 2462423.693191791,
+        "angular_error_mas": 90.76188110684535
+      },
+      {
+        "jd_tt": 2462417.548774135,
+        "angular_error_mas": 90.70982381486172
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 1219.3,
+    "throughput_ops_s": 820127,
+    "total_ns": 12193228,
+    "batch_size": 10000
+  },
+  "run_metadata": {
+    "date": "2026-02-12T17:55:18Z",
+    "git_shas": {
+      "lab": "7328c9f3e9ed",
+      "siderust": "7e2e9213ef41",
+      "erfa": "1d9738bed995"
+    },
+    "cpu": "x86_64",
+    "os": "Linux 6.17.0-14-generic",
+    "toolchain": {
+      "python": "3.12.3",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+    }
+  },
+  "reference_performance": {
+    "per_op_ns": 46260.6,
+    "throughput_ops_s": 21617
+  }
+}

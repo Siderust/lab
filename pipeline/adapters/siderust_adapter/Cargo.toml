@@ -1,0 +1,23 @@
+[package]
+name = "siderust-adapter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+siderust = { path = "../../../siderust" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Use the exact vendored subcrates from the siderust submodule
+[patch.crates-io]
+affn = { path = "../../../siderust/affn" }
+affn-derive = { path = "../../../siderust/affn/affn-derive" }
+cheby = { path = "../../../siderust/cheby" }
+qtty = { path = "../../../siderust/qtty/qtty" }
+qtty-core = { path = "../../../siderust/qtty/qtty-core" }
+qtty-derive = { path = "../../../siderust/qtty/qtty-derive" }
+tempoch = { path = "../../../siderust/tempoch" }
+
+[profile.release]
+opt-level = 3
+lto = true

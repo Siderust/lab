@@ -1,0 +1,76 @@
+{
+  "experiment": "gmst_era",
+  "candidate_library": "siderust",
+  "reference_library": "erfa",
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "models": {
+      "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
+      "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
+      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA"
+    },
+    "mode": "common_denominator"
+  },
+  "inputs": {
+    "count": 10000,
+    "seed": 42
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "siderust",
+    "gmst_error_rad": {
+      "p50": 1.3000645082694717e-07,
+      "p90": 2.9161682280065554e-07,
+      "p99": 3.2947244170244973e-07,
+      "max": 1.3857215659385247e-06,
+      "mean": 1.423697782632875e-07,
+      "rms": 1.7524054114888118e-07
+    },
+    "gmst_error_arcsec": {
+      "p50": 0.02681575539069292,
+      "p90": 0.060150287453371046,
+      "p99": 0.06795856935151354,
+      "max": 0.28582559031073274,
+      "mean": 0.029365874728919068,
+      "rms": 0.0361459562667103
+    },
+    "era_error_rad": {
+      "p50": 2.0747847884194925e-12,
+      "p90": 1.1397105481592007e-11,
+      "p99": 1.777081592990726e-11,
+      "max": 2.55298004958604e-11,
+      "mean": 4.05884543752677e-12,
+      "rms": 6.073327407382319e-12
+    }
+  },
+  "run_metadata": {
+    "date": "2026-02-12T17:55:21Z",
+    "git_shas": {
+      "lab": "7328c9f3e9ed",
+      "siderust": "7e2e9213ef41",
+      "erfa": "1d9738bed995"
+    },
+    "cpu": "x86_64",
+    "os": "Linux 6.17.0-14-generic",
+    "toolchain": {
+      "python": "3.12.3",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+    }
+  }
+}
