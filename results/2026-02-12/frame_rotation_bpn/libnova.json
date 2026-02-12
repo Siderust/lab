@@ -29,7 +29,7 @@
     "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). Differences measure the model gap, not implementation bugs."
   },
   "inputs": {
-    "count": 200,
+    "count": 1000,
     "seed": 42,
     "epoch_range": [
       "JD 2415020.0",
@@ -40,76 +40,81 @@
     "reference": "erfa",
     "candidate": "libnova",
     "angular_error_mas": {
-      "p50": 35.975391555800925,
-      "p90": 78.81553289677498,
-      "p95": 91.35833882252557,
-      "p99": 438.7886145910985,
-      "max": 1246.565193006064,
-      "min": 3.073585126505738,
-      "mean": 55.4988565937848,
-      "rms": 134.653901198764
+      "p50": 34.97673936740141,
+      "p90": 78.5058533839189,
+      "p95": 90.12973642222163,
+      "p99": 104.68524111085881,
+      "max": 1286.9772955680685,
+      "min": 0.0,
+      "mean": 43.13058255821912,
+      "rms": 70.4457396711074
     },
     "closure_error_rad": {
       "p50": 0.0,
       "p90": 0.0,
       "p95": 0.0,
-      "p99": 5.53578321829399e-08,
-      "max": 4.539427879247898e-06,
+      "p99": 1.4901161193847656e-08,
+      "max": 1.4402571642626885e-06,
       "min": 0.0,
-      "mean": 4.042260663240218e-08,
-      "rms": 4.031569676718167e-07
+      "mean": 3.1843535889424477e-09,
+      "rms": 5.8699984490859515e-08
     },
     "matrix_frobenius": null,
     "nan_count": 0,
     "inf_count": 0,
     "worst_cases": [
       {
-        "jd_tt": 2415020.0,
-        "angular_error_mas": 1246.565193006064
-      },
-      {
         "jd_tt": 2488069.5,
-        "angular_error_mas": 1169.3527221930178
+        "angular_error_mas": 1286.9772955680685
       },
       {
-        "jd_tt": 2452968.6148947133,
-        "angular_error_mas": 431.40917916078286
+        "jd_tt": 2415020.0,
+        "angular_error_mas": 1014.841771543377
       },
       {
-        "jd_tt": 2452505.423990906,
-        "angular_error_mas": 308.1719363470238
+        "jd_tt": 2456306.7250005747,
+        "angular_error_mas": 129.9657756773727
+      },
+      {
+        "jd_tt": 2462475.9832583084,
+        "angular_error_mas": 109.18800308965002
+      },
+      {
+        "jd_tt": 2462444.4444139553,
+        "angular_error_mas": 108.84137363368032
+      },
+      {
+        "jd_tt": 2462278.6457325276,
+        "angular_error_mas": 107.88240010682507
+      },
+      {
+        "jd_tt": 2462320.7926101927,
+        "angular_error_mas": 106.29451036499248
+      },
+      {
+        "jd_tt": 2462344.0564072407,
+        "angular_error_mas": 105.67055396994569
       },
       {
         "jd_tt": 2462235.3819180597,
-        "angular_error_mas": 106.78220410987099
+        "angular_error_mas": 105.13278684576318
       },
       {
-        "jd_tt": 2462146.487893148,
-        "angular_error_mas": 102.58593977872172
-      },
-      {
-        "jd_tt": 2461986.3951214766,
-        "angular_error_mas": 100.6335141393197
-      },
-      {
-        "jd_tt": 2462084.993659301,
-        "angular_error_mas": 92.71840287768379
-      },
-      {
-        "jd_tt": 2461582.1997930952,
-        "angular_error_mas": 92.00241993975047
-      },
-      {
-        "jd_tt": 2461500.7729184288,
-        "angular_error_mas": 91.84826889049441
+        "jd_tt": 2462171.7491413015,
+        "angular_error_mas": 104.9529188152343
       }
     ]
   },
-  "performance": {},
+  "performance": {
+    "per_op_ns": 9328.8,
+    "throughput_ops_s": 107195,
+    "total_ns": 9328802,
+    "batch_size": 1000
+  },
   "run_metadata": {
-    "date": "2026-02-12T20:32:19Z",
+    "date": "2026-02-12T22:17:26Z",
     "git_shas": {
-      "lab": "14fe1b43f02a",
+      "lab": "3f88b1e963fa",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -121,5 +126,9 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
+  },
+  "reference_performance": {
+    "per_op_ns": 43884.9,
+    "throughput_ops_s": 22787
   }
 }

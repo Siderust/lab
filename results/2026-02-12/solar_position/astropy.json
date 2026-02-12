@@ -28,7 +28,7 @@
     "note": "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). Differences reflect VSOP87 truncation levels and aberration correction details."
   },
   "inputs": {
-    "count": 200,
+    "count": 1000,
     "seed": 42
   },
   "accuracy": {
@@ -39,8 +39,8 @@
       "p90": 0.003073585126505738,
       "p99": 0.003073585126505738,
       "max": 0.003073585126505738,
-      "mean": 0.0006915566534637911,
-      "rms": 0.0014579294373262346
+      "mean": 0.0006393057063131935,
+      "rms": 0.0014017704912768273
     },
     "signed_ra_error_arcsec": {
       "p50": 0.0,
@@ -69,9 +69,9 @@
     }
   },
   "run_metadata": {
-    "date": "2026-02-12T20:32:20Z",
+    "date": "2026-02-12T22:17:28Z",
     "git_shas": {
-      "lab": "14fe1b43f02a",
+      "lab": "3f88b1e963fa",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"

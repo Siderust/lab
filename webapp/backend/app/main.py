@@ -27,6 +27,7 @@ LAB_ROOT = _WEBAPP_DIR.parent  # repo root containing results/, pipeline/, …
 
 loader = ResultsLoader(LAB_ROOT)
 runner = BenchmarkRunner(LAB_ROOT)
+runner._results_loader = loader  # allow runner to reload results cache on completion
 
 # ---------------------------------------------------------------------------
 # App

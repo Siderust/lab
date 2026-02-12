@@ -28,7 +28,7 @@
     "note": "Kepler's equation M = E - e*sin(E) is solved for E given (M, e). Self-consistency M_reconstructed = E - e*sin(E) is the primary metric. libnova uses a bisection method with lower convergence tolerance."
   },
   "inputs": {
-    "count": 200,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
@@ -37,33 +37,33 @@
     "E_error_rad": {
       "p50": 0.0,
       "p90": 0.0,
-      "p99": 0.0006739566383688632,
-      "max": 0.38255940365110774,
-      "mean": -0.0022497753374398476,
-      "rms": 0.0274676057225509
+      "p99": 4.485301019485655e-16,
+      "max": 8.881784197001252e-16,
+      "mean": 1.609823385706477e-17,
+      "rms": 1.2174545926647188e-16
     },
     "nu_error_rad": {
       "p50": 0.0,
       "p90": 0.0,
-      "p99": 6.519146143307463e-06,
-      "max": 0.02192921474543752,
-      "mean": -0.00011290564679841352,
-      "rms": 0.0015513146876371964
+      "p99": 4.463096558993141e-16,
+      "max": 6.661338147750939e-16,
+      "mean": 6.661338147750939e-18,
+      "rms": 9.678699938266252e-17
     },
     "consistency_error_rad": {
       "p50": 0.0,
       "p90": 4.440892098500626e-16,
       "p99": 8.881784197001252e-16,
       "max": 8.881784197001252e-16,
-      "mean": 8.298917109073046e-17,
-      "rms": 2.0846266635816013e-16
+      "mean": 1.149080830487037e-16,
+      "rms": 2.562848314344458e-16
     },
     "nan_count": 0
   },
   "run_metadata": {
-    "date": "2026-02-12T20:32:21Z",
+    "date": "2026-02-12T22:15:33Z",
     "git_shas": {
-      "lab": "14fe1b43f02a",
+      "lab": "3f88b1e963fa",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"

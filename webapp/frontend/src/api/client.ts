@@ -77,6 +77,14 @@ export function fetchJobs(): Promise<BenchmarkStatus[]> {
   return get<BenchmarkStatus[]>("/benchmark/jobs");
 }
 
+export async function fetchJobLogs(jobId: string): Promise<string> {
+  const res = await fetch(`${BASE}/benchmark/jobs/${jobId}/logs`);
+  if (!res.ok) {
+    throw new Error(`${res.status}: ${await res.text()}`);
+  }
+  return res.text();
+}
+
 /**
  * Connect to the benchmark WebSocket and call `onLine` for each log line.
  * Returns a close function.
@@ -88,6 +96,7 @@ export function subscribeBenchmarkLogs(
 ): () => void {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${proto}//${window.location.host}/api/benchmark/ws/${jobId}`);
+  let finished = false;
 
   ws.onmessage = (ev) => {
     try {
@@ -95,6 +104,7 @@ export function subscribeBenchmarkLogs(
       if (msg.type === "log") {
         onLine(msg.line);
       } else if (msg.type === "done") {
+        finished = true;
         onDone(msg.status);
       }
     } catch {
@@ -102,8 +112,18 @@ export function subscribeBenchmarkLogs(
     }
   };
 
-  ws.onerror = () => onDone("error");
-  ws.onclose = () => onDone("closed");
+  ws.onerror = () => {
+    if (!finished) onDone("error");
+  };
+  ws.onclose = () => {
+    // Only report "closed" if we didn't already get a "done" message
+    if (!finished) {
+      // If connection drops, poll the job status as a fallback
+      get<BenchmarkStatus>(`/benchmark/jobs/${jobId}`)
+        .then((s) => onDone(s.status))
+        .catch(() => onDone("closed"));
+    }
+  };
 
   return () => ws.close();
 }

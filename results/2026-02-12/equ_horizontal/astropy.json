@@ -28,7 +28,7 @@
     "note": "Azimuth convention: ERFA 0\u00b0=North CW; libnova 0\u00b0=South. All adapters use the same spherical trig, differences arise from GAST model. No atmospheric refraction applied."
   },
   "inputs": {
-    "count": 200,
+    "count": 1000,
     "seed": 42
   },
   "accuracy": {
@@ -37,10 +37,10 @@
     "angular_sep_arcsec": {
       "p50": 0.0,
       "p90": 0.003073585126505738,
-      "p99": 0.003073585126505738,
+      "p99": 0.00434670577101264,
       "max": 0.00434670577101264,
-      "mean": 0.0005596109259935673,
-      "rms": 0.001321998949707336
+      "mean": 0.0006010590862521719,
+      "rms": 0.001381404704290243
     },
     "signed_ra_error_arcsec": {
       "p50": 0.0,
@@ -61,9 +61,9 @@
     "nan_count": 0
   },
   "run_metadata": {
-    "date": "2026-02-12T20:32:20Z",
+    "date": "2026-02-12T22:17:28Z",
     "git_shas": {
-      "lab": "14fe1b43f02a",
+      "lab": "3f88b1e963fa",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"

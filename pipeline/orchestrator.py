@@ -1457,9 +1457,11 @@ def main():
     ]
 
     parser = argparse.ArgumentParser(description="Siderust Lab Orchestrator")
-    parser.add_argument("--experiment", default="all",
+    parser.add_argument("--experiment", default=None,
                         choices=all_experiments + ["all"],
-                        help="Which experiment to run")
+                        help="(deprecated, use --experiments) Which experiment to run")
+    parser.add_argument("--experiments", default=None,
+                        help="Comma-separated list of experiments to run, or 'all'")
     parser.add_argument("--n", type=int, default=1000,
                         help="Number of test cases")
     parser.add_argument("--seed", type=int, default=42,
@@ -1468,7 +1470,12 @@ def main():
                         help="Skip performance tests")
     args = parser.parse_args()
 
-    experiments_to_run = all_experiments if args.experiment == "all" else [args.experiment]
+    # Resolve which experiments to run (--experiments takes precedence)
+    raw = args.experiments or args.experiment or "all"
+    if raw == "all":
+        experiments_to_run = all_experiments
+    else:
+        experiments_to_run = [e.strip() for e in raw.split(",") if e.strip()]
 
     all_results = []
 

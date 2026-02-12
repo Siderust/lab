@@ -6,6 +6,7 @@ import asyncio
 import json
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import PlainTextResponse
 
 from ..models.schemas import BenchmarkRequest, BenchmarkStatus
 
@@ -39,6 +40,17 @@ async def get_job(job_id: str) -> BenchmarkStatus:
     return status
 
 
+@router.get("/benchmark/jobs/{job_id}/logs")
+async def get_job_logs(job_id: str) -> PlainTextResponse:
+    """Return the full log output for a job (from disk or memory buffer)."""
+    from ..main import runner
+
+    lines = runner.get_log_lines(job_id)
+    if lines is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    return PlainTextResponse("\n".join(lines))
+
+
 @router.websocket("/benchmark/ws/{job_id}")
 async def benchmark_ws(websocket: WebSocket, job_id: str) -> None:
     from ..main import loader, runner
@@ -49,6 +61,17 @@ async def benchmark_ws(websocket: WebSocket, job_id: str) -> None:
         return
 
     await websocket.accept()
+
+    # If the job already finished before WS connected, send buffered logs + done
+    if runner.is_finished(job_id):
+        for line in runner.get_log_lines(job_id) or []:
+            await websocket.send_text(json.dumps({"type": "log", "line": line}))
+        final = runner.get_status(job_id)
+        await websocket.send_text(
+            json.dumps({"type": "done", "status": final.status if final else "unknown"})
+        )
+        return
+
     q = runner.subscribe(job_id)
 
     try:
@@ -60,7 +83,7 @@ async def benchmark_ws(websocket: WebSocket, job_id: str) -> None:
                 await websocket.send_text(
                     json.dumps({"type": "done", "status": final.status if final else "unknown"})
                 )
-                # Reload results so the new run is visible
+                # Belt-and-suspenders reload (main reload is in _read_output)
                 loader.reload()
                 break
             await websocket.send_text(json.dumps({"type": "log", "line": line}))
