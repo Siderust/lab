@@ -1,9 +1,12 @@
-[submodule "libnova/libnova"]
-	path = libnova/libnova
-	url = https://git.code.sf.net/p/libnova/libnova
 [submodule "siderust"]
 	path = siderust
 	url = git@github.com:Siderust/siderust.git
 [submodule "astropy"]
 	path = astropy
 	url = git@github.com:astropy/astropy.git
+[submodule "anise"]
+	path = anise
+	url = git@github.com:nyx-space/anise.git
+[submodule "libnova"]
+	path = libnova
+	url = https://git.code.sf.net/p/libnova/libnova
