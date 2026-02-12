@@ -22,48 +22,50 @@
     "models": {
       "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
       "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
-      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA"
+      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
+      "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)"
     },
     "mode": "common_denominator"
   },
   "inputs": {
-    "count": 10000,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
     "reference": "erfa",
     "candidate": "siderust",
     "gmst_error_rad": {
-      "p50": 1.3000645082694717e-07,
-      "p90": 2.9161682280065554e-07,
-      "p99": 3.2947244170244973e-07,
+      "p50": 1.1857826789918313e-07,
+      "p90": 2.650553393657162e-07,
+      "p99": 1.293318874020511e-06,
       "max": 1.3857215659385247e-06,
-      "mean": 1.423697782632875e-07,
-      "rms": 1.7524054114888118e-07
+      "mean": 1.6055468164938303e-07,
+      "rms": 2.5032903797774685e-07
     },
     "gmst_error_arcsec": {
-      "p50": 0.02681575539069292,
-      "p90": 0.060150287453371046,
-      "p99": 0.06795856935151354,
+      "p50": 0.024458523453341294,
+      "p90": 0.05467158821902783,
+      "p99": 0.2667661669655535,
       "max": 0.28582559031073274,
-      "mean": 0.029365874728919068,
-      "rms": 0.0361459562667103
+      "mean": 0.033116780302474225,
+      "rms": 0.051634070516501984
     },
     "era_error_rad": {
-      "p50": 2.0747847884194925e-12,
-      "p90": 1.1397105481592007e-11,
-      "p99": 1.777081592990726e-11,
+      "p50": 2.4371615836571436e-12,
+      "p90": 1.1414869049986013e-11,
+      "p99": 1.7053380929610328e-11,
       "max": 2.55298004958604e-11,
-      "mean": 4.05884543752677e-12,
-      "rms": 6.073327407382319e-12
+      "mean": 4.192743929820608e-12,
+      "rms": 6.267957147057607e-12
     }
   },
   "run_metadata": {
-    "date": "2026-02-12T17:55:21Z",
+    "date": "2026-02-12T19:30:32Z",
     "git_shas": {
-      "lab": "7328c9f3e9ed",
+      "lab": "15b1f8a8105a",
       "siderust": "7e2e9213ef41",
-      "erfa": "1d9738bed995"
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
     },
     "cpu": "x86_64",
     "os": "Linux 6.17.0-14-generic",

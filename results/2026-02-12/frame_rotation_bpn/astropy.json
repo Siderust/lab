@@ -22,13 +22,14 @@
     "models": {
       "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
       "siderust": "IERS 2003 frame bias + Meeus precession (\u03b6,z,\u03b8) + IAU 1980 nutation (63 terms)",
-      "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)"
+      "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
+      "libnova": "Meeus precession (\u03b6,z,\u03b8 Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)"
     },
     "mode": "common_denominator",
-    "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). Differences measure the model gap, not implementation bugs."
+    "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). Differences measure the model gap, not implementation bugs."
   },
   "inputs": {
-    "count": 5000,
+    "count": 100,
     "seed": 42,
     "epoch_range": [
       "JD 2415020.0",
@@ -42,21 +43,21 @@
       "p50": 0.0,
       "p90": 0.0,
       "p95": 0.0,
-      "p99": 4.3467057710126396,
+      "p99": 4.356474769307478,
       "max": 5.323605600495954,
       "min": 0.0,
-      "mean": 0.15427740097863366,
-      "rms": 0.7516156908198911
+      "mean": 0.1581748162452007,
+      "rms": 0.8131941878121182
     },
     "closure_error_rad": {
       "p50": 0.0,
       "p90": 0.0,
       "p95": 0.0,
-      "p99": 1.4901161193847656e-08,
-      "max": 2.1073424255447017e-08,
+      "p99": 1.490116119385528e-10,
+      "max": 1.4901161193847656e-08,
       "min": 0.0,
-      "mean": 3.235231315675499e-10,
-      "rms": 2.2598729860936258e-09
+      "mean": 1.4901161193847657e-10,
+      "rms": 1.4901161193847657e-09
     },
     "matrix_frobenius": {
       "p50": 0.0,
@@ -72,59 +73,60 @@
     "inf_count": 0,
     "worst_cases": [
       {
-        "jd_tt": 2452332.429682202,
+        "jd_tt": 2461700.0273653087,
         "angular_error_mas": 5.323605600495954
       },
       {
-        "jd_tt": 2461208.4983317996,
-        "angular_error_mas": 5.323605600495954
-      },
-      {
-        "jd_tt": 2455900.3222720404,
-        "angular_error_mas": 5.323605600495954
-      },
-      {
-        "jd_tt": 2458154.6150625073,
-        "angular_error_mas": 5.323605600495954
-      },
-      {
-        "jd_tt": 2452332.130585106,
-        "angular_error_mas": 5.323605600495954
-      },
-      {
-        "jd_tt": 2456051.608846843,
-        "angular_error_mas": 5.323605600495954
-      },
-      {
-        "jd_tt": 2455096.591081495,
+        "jd_tt": 2460464.628364978,
         "angular_error_mas": 4.3467057710126396
       },
       {
-        "jd_tt": 2460290.929052986,
-        "angular_error_mas": 4.3467057710126396
+        "jd_tt": 2456757.5367291206,
+        "angular_error_mas": 3.073585126505738
       },
       {
-        "jd_tt": 2455821.4508234705,
-        "angular_error_mas": 4.3467057710126396
+        "jd_tt": 2459705.73132336,
+        "angular_error_mas": 3.073585126505738
       },
       {
-        "jd_tt": 2460340.6397759104,
-        "angular_error_mas": 4.3467057710126396
+        "jd_tt": 2452799.9632807705,
+        "angular_error_mas": 0.0
+      },
+      {
+        "jd_tt": 2455429.718295783,
+        "angular_error_mas": 0.0
+      },
+      {
+        "jd_tt": 2456573.5696104616,
+        "angular_error_mas": 0.0
+      },
+      {
+        "jd_tt": 2460613.7685671085,
+        "angular_error_mas": 0.0
+      },
+      {
+        "jd_tt": 2455604.312228877,
+        "angular_error_mas": 0.0
+      },
+      {
+        "jd_tt": 2459218.15485519,
+        "angular_error_mas": 0.0
       }
     ]
   },
   "performance": {
-    "per_op_ns": 40651.8842,
-    "throughput_ops_s": 24599.10579003371,
-    "total_ns": 203259421,
-    "batch_size": 5000
+    "per_op_ns": 44706.29,
+    "throughput_ops_s": 22368.217089809958,
+    "total_ns": 4470629,
+    "batch_size": 100
   },
   "run_metadata": {
-    "date": "2026-02-12T18:51:51Z",
+    "date": "2026-02-12T19:30:32Z",
     "git_shas": {
-      "lab": "6b7c61fe0aba",
+      "lab": "15b1f8a8105a",
       "siderust": "7e2e9213ef41",
-      "erfa": "1d9738bed995"
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
     },
     "cpu": "x86_64",
     "os": "Linux 6.17.0-14-generic",
@@ -135,7 +137,7 @@
     }
   },
   "reference_performance": {
-    "per_op_ns": 46024.2,
-    "throughput_ops_s": 21728
+    "per_op_ns": 74169.4,
+    "throughput_ops_s": 13483
   }
 }

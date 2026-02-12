@@ -1,6 +1,6 @@
 {
   "experiment": "gmst_era",
-  "candidate_library": "astropy",
+  "candidate_library": "libnova",
   "reference_library": "erfa",
   "alignment": {
     "units": {
@@ -33,30 +33,28 @@
   },
   "accuracy": {
     "reference": "erfa",
-    "candidate": "astropy",
+    "candidate": "libnova",
     "gmst_error_rad": {
-      "p50": 0.0,
-      "p90": 0.0,
-      "p99": 0.0,
-      "max": 0.0,
-      "mean": 0.0,
-      "rms": 0.0
+      "p50": 1.1857623574695886e-07,
+      "p90": 2.6506265362602475e-07,
+      "p99": 1.2933188738006866e-06,
+      "max": 1.3857215659385247e-06,
+      "mean": 1.6055466103552518e-07,
+      "rms": 2.5032922690818263e-07
     },
     "gmst_error_arcsec": {
-      "p50": 0.0,
-      "p90": 0.0,
-      "p99": 0.0,
-      "max": 0.0,
-      "mean": 0.0,
-      "rms": 0.0
+      "p50": 0.02445810429185649,
+      "p90": 0.05467309689351322,
+      "p99": 0.26676616692021154,
+      "max": 0.28582559031073274,
+      "mean": 0.03311677605056083,
+      "rms": 0.05163410948620171
     },
     "era_error_rad": {
-      "p50": 0.0,
-      "p90": 0.0,
-      "p99": 0.0,
-      "max": 0.0,
-      "mean": 0.0,
-      "rms": 0.0
+      "p50": null,
+      "p90": null,
+      "p99": null,
+      "max": null
     }
   },
   "run_metadata": {

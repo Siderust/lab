@@ -35,6 +35,9 @@ build_all() {
     log "Building ERFA adapter (C)..."
     make -C pipeline/adapters/erfa_adapter -j"$(nproc)" 2>&1 | tail -3
 
+    log "Building libnova adapter (C)..."
+    make -C pipeline/adapters/libnova_adapter -j"$(nproc)" 2>&1 | tail -3
+
     log "Building Siderust adapter (Rust, release)..."
     (cd pipeline/adapters/siderust_adapter && cargo build --release 2>&1 | tail -3)
 

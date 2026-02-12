@@ -6,8 +6,9 @@ Date: 2026-02-12
 
 | Library | GMST p50 (arcsec) | GMST p99 (arcsec) | GMST max (arcsec) | ERA p50 (rad) | ERA max (rad) |
 |---------|-------------------|-------------------|-------------------|---------------|---------------|
-| siderust | 0.026816 | 0.067959 | 0.285826 | 0.0000000000 | 0.0000000000 |
+| siderust | 0.024459 | 0.266766 | 0.285826 | 0.0000000000 | 0.0000000000 |
 | astropy | 0.000000 | 0.000000 | 0.000000 | 0.0000000000 | 0.0000000000 |
+| libnova | 0.024458 | 0.266766 | 0.285826 | — | — |
 
 
 ## Alignment Checklist
@@ -33,7 +34,8 @@ Date: 2026-02-12
   "models": {
     "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
     "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
-    "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA"
+    "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
+    "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)"
   },
   "mode": "common_denominator"
 }

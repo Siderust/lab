@@ -3,7 +3,7 @@
 Siderust Lab Orchestrator
 =========================
 
-Generates inputs, runs adapters (ERFA, Siderust, Astropy), collects results,
+Generates inputs, runs adapters (ERFA, Siderust, Astropy, libnova), collects results,
 computes accuracy & performance metrics, and writes structured output.
 
 Usage:
@@ -35,6 +35,7 @@ RESULTS_DIR = LAB_ROOT / "results"
 ERFA_BIN = LAB_ROOT / "pipeline" / "adapters" / "erfa_adapter" / "build" / "erfa_adapter"
 SIDERUST_BIN = LAB_ROOT / "pipeline" / "adapters" / "siderust_adapter" / "target" / "release" / "siderust-adapter"
 ASTROPY_SCRIPT = LAB_ROOT / "pipeline" / "adapters" / "astropy_adapter" / "adapter.py"
+LIBNOVA_BIN = LAB_ROOT / "pipeline" / "adapters" / "libnova_adapter" / "build" / "libnova_adapter"
 
 RAD_TO_MAS = 180.0 / math.pi * 3600.0 * 1000.0  # radians → milli-arcseconds
 RAD_TO_ARCSEC = 180.0 / math.pi * 3600.0
@@ -226,8 +227,8 @@ def compute_accuracy_metrics(ref_cases, cand_cases, ref_label, cand_label):
         # Closure error from candidate
         closure_errors_rad.append(cand_c.get("closure_rad", 0.0))
 
-        # Matrix difference (if both have matrices)
-        if "matrix" in ref_c and "matrix" in cand_c:
+        # Matrix difference (if both have non-null matrices)
+        if ref_c.get("matrix") is not None and cand_c.get("matrix") is not None:
             ref_m = np.array(ref_c["matrix"])
             cand_m = np.array(cand_c["matrix"])
             frob = np.linalg.norm(ref_m - cand_m)
@@ -336,11 +337,13 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
             "siderust": "IERS 2003 frame bias + Meeus precession (ζ,z,θ) + IAU 1980 nutation (63 terms)",
             "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
+            "libnova": "Meeus precession (ζ,z,θ Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)",
         }
         base["mode"] = mode
         base["note"] = (
             "ERFA and Astropy use the same IAU 2006/2000A model (reference). "
             "Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). "
+            "libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). "
             "Differences measure the model gap, not implementation bugs."
         )
     elif experiment == "gmst_era":
@@ -348,6 +351,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
             "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
             "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
+            "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)",
         }
         base["mode"] = mode
 
@@ -378,6 +382,7 @@ def run_metadata():
             "lab": get_git_sha(LAB_ROOT),
             "siderust": get_git_sha(LAB_ROOT / "siderust"),
             "erfa": get_git_sha(LAB_ROOT / "erfa"),
+            "libnova": get_git_sha(LAB_ROOT / "libnova"),
         },
         "cpu": platform.processor() or platform.machine(),
         "os": f"{platform.system()} {platform.release()}",
@@ -480,7 +485,7 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True):
     Run the frame_rotation_bpn experiment end-to-end.
 
     Reference: ERFA (IAU 2006/2000A BPN matrix)
-    Candidates: Siderust, Astropy
+    Candidates: Siderust, Astropy, libnova
     """
     print(f"\n{'='*70}")
     print(f" Experiment: frame_rotation_bpn (N={n}, seed={seed})")
@@ -505,6 +510,9 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True):
         [sys.executable, str(ASTROPY_SCRIPT)], input_text, "astropy"
     )
 
+    print("  Running libnova adapter...")
+    adapters["libnova"] = run_adapter([str(LIBNOVA_BIN)], input_text, "libnova")
+
     # 3) Compute accuracy metrics
     results = []
     ref_data = adapters.get("erfa")
@@ -512,7 +520,7 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True):
         print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
         return results
 
-    for lib in ["siderust", "astropy"]:
+    for lib in ["siderust", "astropy", "libnova"]:
         cand_data = adapters.get(lib)
         if cand_data is None:
             continue
@@ -545,6 +553,7 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True):
             ("erfa", [str(ERFA_BIN)]),
             ("siderust", [str(SIDERUST_BIN)]),
             ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+            ("libnova", [str(LIBNOVA_BIN)]),
         ]:
             print(f"    Timing {lib}...")
             perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
@@ -576,7 +585,7 @@ def run_experiment_gmst_era(n: int, seed: int):
     Run the gmst_era experiment end-to-end.
 
     Reference: ERFA (IAU 2006 GMST, IAU 2000 ERA)
-    Candidates: Siderust, Astropy
+    Candidates: Siderust, Astropy, libnova
     """
     print(f"\n{'='*70}")
     print(f" Experiment: gmst_era (N={n}, seed={seed})")
@@ -601,6 +610,9 @@ def run_experiment_gmst_era(n: int, seed: int):
         [sys.executable, str(ASTROPY_SCRIPT)], input_text, "astropy"
     )
 
+    print("  Running libnova adapter...")
+    adapters["libnova"] = run_adapter([str(LIBNOVA_BIN)], input_text, "libnova")
+
     # 3) Compute accuracy
     results = []
     ref_data = adapters.get("erfa")
@@ -608,7 +620,7 @@ def run_experiment_gmst_era(n: int, seed: int):
         print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
         return results
 
-    for lib in ["siderust", "astropy"]:
+    for lib in ["siderust", "astropy", "libnova"]:
         cand_data = adapters.get(lib)
         if cand_data is None:
             continue
