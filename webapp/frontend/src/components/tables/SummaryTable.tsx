@@ -7,8 +7,8 @@
  */
 
 import { Link } from "react-router-dom";
-import type { RunAnalytics } from "../../lib/analytics";
-import { fmtValue, fmtNs, fmtOpsS, libColor } from "../../lib/analytics";
+import type { RunAnalytics } from "../../utils/analytics";
+import { fmtValue, fmtNs, fmtOpsS, libColor } from "../../utils/analytics";
 
 interface Props {
   runId: string;

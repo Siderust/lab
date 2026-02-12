@@ -25,7 +25,7 @@ import {
   fmtNs,
   fmtOpsS,
   libColor,
-} from "../lib/analytics";
+} from "../utils/analytics";
 
 const TABS = ["Overview", "Accuracy", "Performance", "Assumptions"] as const;
 type Tab = (typeof TABS)[number];

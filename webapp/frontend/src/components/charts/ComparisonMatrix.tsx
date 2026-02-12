@@ -8,8 +8,8 @@
  */
 
 import { useState } from "react";
-import type { RunAnalytics, PairwiseCell } from "../../lib/analytics";
-import { computePairwiseMatrix, libColor, fmtValue, fmtNs } from "../../lib/analytics";
+import type { RunAnalytics, PairwiseCell } from "../../utils/analytics";
+import { computePairwiseMatrix, libColor, fmtValue, fmtNs } from "../../utils/analytics";
 
 interface Props {
   analytics: RunAnalytics;

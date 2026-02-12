@@ -6,8 +6,8 @@
 
 import Plot from "react-plotly.js";
 import type { Data, Layout } from "plotly.js-dist-min";
-import type { ExperimentAnalytics } from "../../lib/analytics";
-import { libColor } from "../../lib/analytics";
+import type { ExperimentAnalytics } from "../../utils/analytics";
+import { libColor } from "../../utils/analytics";
 
 interface Props {
   experiments: ExperimentAnalytics[];

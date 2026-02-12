@@ -14,7 +14,7 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Trophy, Zap, Target, Scale } from "lucide-react";
 import { fetchRun } from "../api/client";
-import { analyzeRun, libColor } from "../lib/analytics";
+import { analyzeRun, libColor } from "../utils/analytics";
 import Header from "../components/layout/Header";
 import PerformanceChart from "../components/charts/PerformanceChart";
 import AccuracyChart from "../components/charts/AccuracyChart";
