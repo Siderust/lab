@@ -1,11 +1,10 @@
 """
-Sanity checks for results_loader and report_generator.
+Sanity checks for results_loader, report_generator, and theme.
 
 Run with:  python -m pytest ui/test_loader.py -v
 """
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -20,7 +19,10 @@ from ui.results_loader import (
     load_results,
 )
 from ui.report_generator import (
+    fmt,
     _fmt,
+    color,
+    _color,
     one_line_summary,
     generate_markdown_report,
 )
@@ -105,6 +107,21 @@ def tmp_results(tmp_path):
     gmst_dir.mkdir(parents=True)
     (gmst_dir / "siderust.json").write_text(json.dumps(SAMPLE_GMST))
 
+    return tmp_path
+
+
+@pytest.fixture
+def multi_date_results(tmp_path):
+    """Results across two dates for trend tests."""
+    for date in ("2026-02-10", "2026-02-12"):
+        bpn_dir = tmp_path / date / "frame_rotation_bpn"
+        bpn_dir.mkdir(parents=True)
+        data = dict(SAMPLE_BPN)
+        # Slightly vary the data for the earlier date
+        if date == "2026-02-10":
+            data = json.loads(json.dumps(SAMPLE_BPN))
+            data["accuracy"]["angular_error_mas"]["p99"] = 90.0
+        (bpn_dir / "siderust.json").write_text(json.dumps(data))
     return tmp_path
 
 
@@ -226,9 +243,23 @@ def test_primary_error_gmst(tmp_results):
 # ──────────────────────────────────────────────────────────
 
 def test_fmt():
-    assert _fmt(None) == "—"
-    assert _fmt(3.14159, 2) == "3.14"
-    assert _fmt(0.0, 6) == "0.000000"
+    assert fmt(None) == "—"
+    assert fmt(3.14159, 2) == "3.14"
+    assert fmt(0.0, 6) == "0.000000"
+
+
+def test_fmt_alias():
+    """_fmt is a back-compat alias for fmt."""
+    assert _fmt(1.5, 1) == fmt(1.5, 1)
+
+
+def test_color():
+    assert color("siderust") == "#3b82f6"
+    assert color("unknown_lib") == "#6b7280"
+
+
+def test_color_alias():
+    assert _color("siderust") == color("siderust")
 
 
 def test_one_line_summary(tmp_results):
@@ -288,3 +319,69 @@ def test_malformed_json_skipped(tmp_path):
     assert len(runs) == 1
     results = load_results(runs[0])
     assert len(results) == 0  # Skipped
+
+
+# ──────────────────────────────────────────────────────────
+# Tests: Multi-date discovery (for trends)
+# ──────────────────────────────────────────────────────────
+
+def test_multi_date_discovery(multi_date_results):
+    runs = discover_runs(multi_date_results)
+    bpn_runs = [r for r in runs if r.experiment == "frame_rotation_bpn"]
+    assert len(bpn_runs) == 2
+    dates = {r.date for r in bpn_runs}
+    assert "2026-02-10" in dates
+    assert "2026-02-12" in dates
+
+
+def test_multi_date_load(multi_date_results):
+    runs = discover_runs(multi_date_results)
+    bpn_runs = sorted(
+        [r for r in runs if r.experiment == "frame_rotation_bpn"],
+        key=lambda r: r.date,
+    )
+    r1 = load_results(bpn_runs[0])[0]  # 2026-02-10
+    r2 = load_results(bpn_runs[1])[0]  # 2026-02-12
+    assert r1.angular_error_mas.p99 == 90.0
+    assert r2.angular_error_mas.p99 == 83.5
+
+
+# ──────────────────────────────────────────────────────────
+# Tests: Box plot has visible IQR (regression test)
+# ──────────────────────────────────────────────────────────
+
+def test_box_plot_visible_iqr(tmp_results):
+    """Box plot Q1 and median must differ (non-zero height)."""
+    from ui.report_generator import make_accuracy_box
+
+    runs = discover_runs(tmp_results)
+    bpn_run = next(r for r in runs if r.experiment == "frame_rotation_bpn")
+    results = load_results(bpn_run)
+    fig = make_accuracy_box(results)
+
+    # The first (only) box trace
+    trace = fig.data[0]
+    q1 = trace.q1[0]
+    median = trace.median[0]
+    q3 = trace.q3[0]
+    # Q1 should be p50 (44.0), median should be p90 (72.0), Q3 should be p95 (76.0)
+    assert q1 != median, "Q1 and median should differ for a visible box"
+    assert median != q3, "Median and Q3 should differ"
+    assert q1 == 44.0
+    assert median == 72.0
+    assert q3 == 76.0
+
+
+# ──────────────────────────────────────────────────────────
+# Tests: Repro block uses real path (not placeholder)
+# ──────────────────────────────────────────────────────────
+
+def test_repro_block_real_path(tmp_results):
+    from ui.report_generator import _repro_block
+
+    runs = discover_runs(tmp_results)
+    bpn_run = next(r for r in runs if r.experiment == "frame_rotation_bpn")
+    r = load_results(bpn_run)[0]
+    block = _repro_block(r)
+    assert "/path/to/" not in block, "Placeholder path should be replaced"
+    assert "cd " in block
