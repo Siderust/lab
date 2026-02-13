@@ -168,6 +168,101 @@ At maturity, this lab should produce:
 - performance dashboards (tables + plots)
 - a short list of concrete, data-backed improvement targets for Siderust
 
+## Benchmark reliability & reproducibility
+
+The benchmark harness is designed for **reliability first**:
+
+### Multi-sample performance measurement
+
+Performance benchmarks run **multiple rounds** (default: 5) and report robust statistics:
+
+- **Median** (primary metric, robust to outliers)
+- **Standard deviation**, **min/max**, **coefficient of variation (CV%)**
+- **95% confidence interval** assuming normal distribution
+- **Individual samples** preserved for analysis
+
+If CV% exceeds 20%, a warning is emitted. If per-op time is below the measurable threshold (10 ns), measurements are flagged as unreliable.
+
+### Deterministic accuracy
+
+Accuracy benchmarks are **fully deterministic** given the same `(N, seed)`:
+- Input generation uses `numpy.random.default_rng(seed)` — no hidden randomness
+- Each dataset is fingerprinted (SHA-256 hash) for identity verification
+- Re-running with the same manifest produces identical results
+
+### Run manifests & provenance
+
+Every run produces a `manifest.json` capturing:
+- Exact configuration (experiments, N, seed, perf_rounds)
+- Full environment metadata (CPU model, core count, OS, compiler versions)
+- Git SHAs for all submodules (siderust, erfa, libnova)
+- Git branch and numpy/pyerfa versions
+
+### CI mode
+
+For continuous integration, use `--ci` to run with reduced parameters:
+```bash
+python3 pipeline/orchestrator.py --ci --experiments all
+```
+This defaults to N=100 and 2 perf rounds — fast but still meaningful.
+
+### Running sanity tests
+
+```bash
+python3 -m pytest pipeline/tests/ -v
+```
+
+Tests verify:
+- Adapters produce non-zero output (no dead-code elimination)
+- Input generation is deterministic
+- Dataset fingerprints are reproducible
+- Performance measurements are above noise threshold
+- Run metadata is complete
+
+## How to interpret results
+
+### For non-experts
+
+Each experiment includes a **description** explaining:
+- **What** it measures (in plain English)
+- **Why** it matters for astronomy
+- **Units** used and their meaning
+- **How to interpret** differences between libraries
+
+These descriptions appear in the web app's experiment detail view.
+
+### Accuracy grades
+
+The Siderust scoreboard grades accuracy as:
+- **Excellent**: errors below the typical measurement precision
+- **Good**: errors within acceptable limits for most applications
+- **Fair**: noticeable errors that may affect precision work
+- **Poor**: significant errors that need investigation
+
+### Performance interpretation
+
+Performance is reported as **median ns/op** (nanoseconds per operation):
+- Includes the full computation, not just the core math
+- Python adapters include interpreter overhead (expected to be slower)
+- Multi-sample statistics detect unstable measurements
+- Speedup is relative to ERFA (the C reference implementation)
+
+## Troubleshooting suspiciously fast benchmarks
+
+If benchmarks report unrealistically fast times:
+
+1. **Check the warnings**: The harness warns if per-op time < 10 ns
+2. **Check CV%**: High CV (>20%) indicates measurement instability
+3. **Increase N**: Larger batch sizes improve measurement accuracy
+4. **Increase rounds**: More rounds reduce noise in the median
+5. **Check adapters**: Verify the adapter binary was rebuilt (`--no-build` skips rebuild)
+6. **Verify output sink**: All adapters use `_sink` values that are printed to stdout, preventing dead-code elimination by the compiler
+
+Common causes of suspiciously fast benchmarks:
+- Stale adapter binary (not rebuilt after code changes)
+- Very small N with fast operations (measurement dominated by process startup)
+- System load affecting timing (high CV% is the indicator)
+
 ## User manual
 
 See `USER_MANUAL.md` for instructions on running the analysis pipeline and interpreting/visualizing the results.
