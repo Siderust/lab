@@ -329,7 +329,7 @@ static void run_lunar_position(void) {
                     - 0.0036539*T*T - T*T*T/3526000.0
                     + T*T*T*T/863310000.0, 360.0);
 
-        double Lp_r = Lp*M_PI/180.0, D_r = D*M_PI/180.0;
+        double D_r = D*M_PI/180.0;
         double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
 
         /* Major longitude terms (×1e-6 deg) */
@@ -711,7 +711,7 @@ static void run_lunar_position_perf(void) {
                     - 0.0036539*T*T - T*T*T/3526000.0
                     + T*T*T*T/863310000.0, 360.0);
 
-        double Lp_r = Lp*M_PI/180.0, D_r = D*M_PI/180.0;
+        double D_r = D*M_PI/180.0;
         double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
 
         double sum_l = 6288774.0*sin(Mp_r)
@@ -759,7 +759,7 @@ static void run_lunar_position_perf(void) {
                     - 0.0036539*T*T - T*T*T/3526000.0
                     + T*T*T*T/863310000.0, 360.0);
 
-        double Lp_r = Lp*M_PI/180.0, D_r = D*M_PI/180.0;
+        double D_r = D*M_PI/180.0;
         double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
 
         double sum_l = 6288774.0*sin(Mp_r)

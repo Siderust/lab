@@ -570,12 +570,16 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
         decs.push(parts[2]);
     }
 
+    // Pre-convert radians -> degrees outside timed loops for fair setup handling.
+    let ras_deg: Vec<f64> = ras.iter().map(|v| v.to_degrees()).collect();
+    let decs_deg: Vec<f64> = decs.iter().map(|v| v.to_degrees()).collect();
+
     // Warm-up
     for i in 0..n.min(100) {
         let jd = JulianDate::new(jds[i]);
         let icrs_pos = siderust::coordinates::spherical::position::GCRS::<AstronomicalUnit>::new(
-            ras[i].to_degrees() * DEG,
-            decs[i].to_degrees() * DEG,
+            ras_deg[i] * DEG,
+            decs_deg[i] * DEG,
             1.0 * qtty::AU,
         );
         let ecl_pos: siderust::coordinates::spherical::Position<
@@ -592,8 +596,8 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
     for i in 0..n {
         let jd = JulianDate::new(jds[i]);
         let icrs_pos = siderust::coordinates::spherical::position::GCRS::<AstronomicalUnit>::new(
-            ras[i].to_degrees() * DEG,
-            decs[i].to_degrees() * DEG,
+            ras_deg[i] * DEG,
+            decs_deg[i] * DEG,
             1.0 *qtty::AU,
         );
         let ecl_pos: siderust::coordinates::spherical::Position<
@@ -736,10 +740,12 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
         jds.push(line.trim().parse().unwrap());
     }
 
+    // Build once; this is fixed input context, not per-op workload.
+    let site = ObserverSite::new(0.0 * DEG, 0.0 * DEG, 0.0 * M);
+
     // Warm-up
     for i in 0..n.min(100) {
         let jd = JulianDate::new(jds[i]);
-        let site = ObserverSite::new(0.0 * DEG, 0.0 * DEG, 0.0 * M);
         let pos = Moon::get_apparent_topocentric_equ::<Kilometer>(jd, site);
         std::hint::black_box(&pos);
     }
@@ -749,7 +755,6 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
     let mut sink: f64 = 0.0;
     for i in 0..n {
         let jd = JulianDate::new(jds[i]);
-        let site = ObserverSite::new(0.0 * DEG, 0.0 * DEG, 0.0 * M);
         let pos = Moon::get_apparent_topocentric_equ::<Kilometer>(jd, site);
         sink += pos.distance.value();
     }

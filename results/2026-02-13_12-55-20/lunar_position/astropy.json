@@ -1,0 +1,97 @@
+{
+  "experiment": "lunar_position",
+  "candidate_library": "astropy",
+  "reference_library": "erfa",
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "Meeus/ELP 2000 (varies by library)",
+    "models": {
+      "erfa": "Simplified Meeus Ch.47 (major terms only, ~10' accuracy)",
+      "siderust": "ELP 2000 via Moon::get_apparent_topocentric_equ with site at (0,0,0)",
+      "astropy": "Simplified Meeus Ch.47 (same algorithm as ERFA adapter)",
+      "libnova": "ELP 2000-82B via ln_get_lunar_equ_coords (full model)"
+    },
+    "note": "ERFA and Astropy use simplified Meeus (~10' accuracy) \u2014 for benchmarking only. Siderust and libnova use full ELP 2000 \u2014 expect ~arcmin-level differences vs reference. No dedicated ERFA Moon ephemeris exists; cross-library comparison is the primary metric."
+  },
+  "inputs": {
+    "count": 20,
+    "seed": 42
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "astropy",
+    "angular_sep_arcsec": {
+      "p50": 0.0327293890397627,
+      "p90": 0.048986698712446465,
+      "p99": 0.0579533605663333,
+      "max": 0.05944030743673969,
+      "mean": 0.03348023248283182,
+      "rms": 0.035995080725325174
+    },
+    "signed_ra_error_arcsec": {
+      "p50": 0.005862327421793058,
+      "p90": 0.012235030465802762,
+      "p99": 0.015554870027019923,
+      "max": 0.016161438993652355,
+      "mean": -0.0001221784577924554,
+      "rms": 0.007964724186690602
+    },
+    "signed_dec_error_arcsec": {
+      "p50": 0.03220421038021739,
+      "p90": 0.048791550379492024,
+      "p99": 0.057708877543882514,
+      "max": 0.059186777374416515,
+      "mean": 0.007754256247789163,
+      "rms": 0.035167468550535236
+    },
+    "nan_count": 0,
+    "dist_km_diff": {
+      "p50": 0.0,
+      "p90": 5.8207660913468234e-12,
+      "p99": 5.820766091346741e-11,
+      "max": 5.820766091346741e-11,
+      "mean": -5.820766091346741e-12,
+      "rms": 1.8406878575731415e-11
+    }
+  },
+  "performance": {
+    "per_op_ns": 4480.0,
+    "throughput_ops_s": 223214.28571428568,
+    "total_ns": 89600,
+    "batch_size": 20
+  },
+  "run_metadata": {
+    "date": "2026-02-13T12:55:22Z",
+    "git_shas": {
+      "lab": "18ad1cd0fed4",
+      "siderust": "7e2e9213ef41",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "cpu": "x86_64",
+    "os": "Linux 6.17.0-14-generic",
+    "toolchain": {
+      "python": "3.12.3",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+    }
+  },
+  "reference_performance": {
+    "per_op_ns": 620.0,
+    "throughput_ops_s": 1612773
+  }
+}

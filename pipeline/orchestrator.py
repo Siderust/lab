@@ -1664,10 +1664,11 @@ def run_experiment_kepler_solver(n: int, seed: int, run_perf: bool = True):
 # Output
 # ---------------------------------------------------------------------------
 
-def write_results(results: list, experiment: str):
+def write_results(results: list, experiment: str, timestamp_str: str | None = None):
     """Write result JSON files and summary table."""
-    # Use timestamp with seconds precision to prevent collisions
-    timestamp_str = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    # Use provided timestamp or generate new one (for backward compatibility)
+    if timestamp_str is None:
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
     out_dir = RESULTS_DIR / timestamp_str / experiment
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1726,6 +1727,9 @@ def main():
     else:
         experiments_to_run = [e.strip() for e in raw.split(",") if e.strip()]
 
+    # Generate single timestamp for this entire run
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+
     all_results = []
 
     dispatch = {
@@ -1761,7 +1765,7 @@ def main():
         results = runner()
 
         if results:
-            write_results(results, exp)
+            write_results(results, exp, run_timestamp)
             all_results.extend(results)
 
             # Print summary

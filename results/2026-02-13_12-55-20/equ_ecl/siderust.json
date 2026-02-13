@@ -1,0 +1,89 @@
+{
+  "experiment": "equ_ecl",
+  "candidate_library": "siderust",
+  "reference_library": "erfa",
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "models": {
+      "erfa": "IAU 2006 obliquity-based transform (eraEqec06 / eraEceq06)",
+      "siderust": "IAU 2006 obliquity, Ecliptic frame via Transform trait",
+      "astropy": "IAU 2006 via bundled ERFA (erfa.eqec06 / erfa.eceq06)",
+      "libnova": "Meeus obliquity (Eq 22.2) via ln_get_ecl_from_equ / ln_get_equ_from_ecl"
+    },
+    "note": "ERFA and Astropy share the same IAU 2006 obliquity model (reference). Siderust uses IAU 2006 obliquity with its own Ecliptic frame implementation. libnova uses Meeus obliquity polynomial \u2014 expect ~arcsec-level differences."
+  },
+  "inputs": {
+    "count": 20,
+    "seed": 42
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "siderust",
+    "angular_sep_arcsec": {
+      "p50": 2228.7632231982416,
+      "p90": 4507.511770746799,
+      "p99": 4834.949996160971,
+      "max": 4892.554388534268,
+      "mean": 2369.975281777933,
+      "rms": 2861.1440098314656
+    },
+    "signed_ra_error_arcsec": {
+      "p50": 3376.302251373345,
+      "p90": 4917.763592298041,
+      "p99": 5030.604799985657,
+      "max": 5030.887536132021,
+      "mean": -2334.1157340410136,
+      "rms": 3299.820351878971
+    },
+    "signed_dec_error_arcsec": {
+      "p50": 0.5570323745872126,
+      "p90": 3.319256969016465,
+      "p99": 3.49540412501414,
+      "max": 3.535632333982581,
+      "mean": -0.09423210067137457,
+      "rms": 1.6416224010844347
+    },
+    "nan_count": 0
+  },
+  "performance": {
+    "per_op_ns": 317.8,
+    "throughput_ops_s": 3146633,
+    "total_ns": 6356,
+    "batch_size": 20
+  },
+  "run_metadata": {
+    "date": "2026-02-13T12:55:20Z",
+    "git_shas": {
+      "lab": "18ad1cd0fed4",
+      "siderust": "7e2e9213ef41",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "cpu": "x86_64",
+    "os": "Linux 6.17.0-14-generic",
+    "toolchain": {
+      "python": "3.12.3",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+    }
+  },
+  "reference_performance": {
+    "per_op_ns": 682.6,
+    "throughput_ops_s": 1464987
+  }
+}

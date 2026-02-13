@@ -549,9 +549,17 @@ static void run_equ_ecl_perf(void) {
         }
     }
 
+    /* Pre-convert to libnova API units outside timed loops for fairness. */
+    double *ras_deg = malloc(n * sizeof(double));
+    double *decs_deg = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        ras_deg[i] = ras[i] * (180.0 / M_PI);
+        decs_deg[i] = decs[i] * (180.0 / M_PI);
+    }
+
     /* Warm-up */
     for (int i = 0; i < n && i < 100; i++) {
-        struct ln_equ_posn equ = { ras[i] * (180.0 / M_PI), decs[i] * (180.0 / M_PI) };
+        struct ln_equ_posn equ = { ras_deg[i], decs_deg[i] };
         struct ln_lnlat_posn ecl;
         ln_get_ecl_from_equ(&equ, jds[i], &ecl);
     }
@@ -562,7 +570,7 @@ static void run_equ_ecl_perf(void) {
 
     double sink = 0.0;
     for (int i = 0; i < n; i++) {
-        struct ln_equ_posn equ = { ras[i] * (180.0 / M_PI), decs[i] * (180.0 / M_PI) };
+        struct ln_equ_posn equ = { ras_deg[i], decs_deg[i] };
         struct ln_lnlat_posn ecl;
         ln_get_ecl_from_equ(&equ, jds[i], &ecl);
         sink += ecl.lng;
@@ -580,6 +588,8 @@ static void run_equ_ecl_perf(void) {
     free(jds);
     free(ras);
     free(decs);
+    free(ras_deg);
+    free(decs_deg);
 }
 
 static void run_equ_horizontal_perf(void) {
@@ -597,13 +607,23 @@ static void run_equ_horizontal_perf(void) {
         }
     }
 
+    /* Pre-convert to libnova degree-based coordinates outside timing. */
+    double *params_deg = malloc(n * 5 * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        params_deg[5*i] = params[6*i];  /* jd_ut1 */
+        params_deg[5*i+1] = params[6*i+2] * (180.0 / M_PI); /* ra */
+        params_deg[5*i+2] = params[6*i+3] * (180.0 / M_PI); /* dec */
+        params_deg[5*i+3] = params[6*i+4] * (180.0 / M_PI); /* lon */
+        params_deg[5*i+4] = params[6*i+5] * (180.0 / M_PI); /* lat */
+    }
+
     /* Warm-up */
     for (int i = 0; i < n && i < 100; i++) {
-        double jd_ut1 = params[6*i];
-        double ra = params[6*i+2] * (180.0 / M_PI);
-        double dec = params[6*i+3] * (180.0 / M_PI);
-        double lon = params[6*i+4] * (180.0 / M_PI);
-        double lat = params[6*i+5] * (180.0 / M_PI);
+        double jd_ut1 = params_deg[5*i];
+        double ra = params_deg[5*i+1];
+        double dec = params_deg[5*i+2];
+        double lon = params_deg[5*i+3];
+        double lat = params_deg[5*i+4];
 
         struct ln_equ_posn object = { ra, dec };
         struct ln_lnlat_posn observer = { lon, lat };
@@ -617,11 +637,11 @@ static void run_equ_horizontal_perf(void) {
 
     double sink = 0.0;
     for (int i = 0; i < n; i++) {
-        double jd_ut1 = params[6*i];
-        double ra = params[6*i+2] * (180.0 / M_PI);
-        double dec = params[6*i+3] * (180.0 / M_PI);
-        double lon = params[6*i+4] * (180.0 / M_PI);
-        double lat = params[6*i+5] * (180.0 / M_PI);
+        double jd_ut1 = params_deg[5*i];
+        double ra = params_deg[5*i+1];
+        double dec = params_deg[5*i+2];
+        double lon = params_deg[5*i+3];
+        double lat = params_deg[5*i+4];
 
         struct ln_equ_posn object = { ra, dec };
         struct ln_lnlat_posn observer = { lon, lat };
@@ -640,6 +660,7 @@ static void run_equ_horizontal_perf(void) {
            (double)n / (elapsed_ns * 1e-9), sink);
 
     free(params);
+    free(params_deg);
 }
 
 static void run_solar_position_perf(void) {
@@ -654,10 +675,12 @@ static void run_solar_position_perf(void) {
         }
     }
 
-    /* Warm-up */
+    /* Warm-up: match functional scope (RA/Dec plus distance). */
     for (int i = 0; i < n && i < 100; i++) {
         struct ln_equ_posn equ;
         ln_get_solar_equ_coords(jds[i], &equ);
+        double dist_au = ln_get_earth_solar_dist(jds[i]);
+        (void)dist_au;
     }
 
     /* Timed run */
@@ -668,7 +691,8 @@ static void run_solar_position_perf(void) {
     for (int i = 0; i < n; i++) {
         struct ln_equ_posn equ;
         ln_get_solar_equ_coords(jds[i], &equ);
-        sink += equ.ra;
+        double dist_au = ln_get_earth_solar_dist(jds[i]);
+        sink += equ.ra + dist_au;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -695,10 +719,12 @@ static void run_lunar_position_perf(void) {
         }
     }
 
-    /* Warm-up */
+    /* Warm-up: match functional scope (RA/Dec plus distance). */
     for (int i = 0; i < n && i < 100; i++) {
         struct ln_equ_posn equ;
         ln_get_lunar_equ_coords(jds[i], &equ);
+        double dist_km = ln_get_lunar_earth_dist(jds[i]);
+        (void)dist_km;
     }
 
     /* Timed run */
@@ -709,7 +735,8 @@ static void run_lunar_position_perf(void) {
     for (int i = 0; i < n; i++) {
         struct ln_equ_posn equ;
         ln_get_lunar_equ_coords(jds[i], &equ);
-        sink += equ.ra;
+        double dist_km = ln_get_lunar_earth_dist(jds[i]);
+        sink += equ.ra + dist_km;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -738,9 +765,15 @@ static void run_kepler_solver_perf(void) {
         }
     }
 
+    /* Pre-convert M radians -> degrees for ln_solve_kepler API parity. */
+    double *m_deg_arr = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        m_deg_arr[i] = m_arr[i] * (180.0 / M_PI);
+    }
+
     /* Warm-up */
     for (int i = 0; i < n && i < 100; i++) {
-        double E = ln_solve_kepler(e_arr[i], m_arr[i]);
+        double E = ln_solve_kepler(e_arr[i], m_deg_arr[i]);
         (void)E;
     }
 
@@ -750,7 +783,7 @@ static void run_kepler_solver_perf(void) {
 
     double sink = 0.0;
     for (int i = 0; i < n; i++) {
-        double E = ln_solve_kepler(e_arr[i], m_arr[i]);
+        double E = ln_solve_kepler(e_arr[i], m_deg_arr[i]);
         sink += E;
     }
 
@@ -765,6 +798,7 @@ static void run_kepler_solver_perf(void) {
 
     free(m_arr);
     free(e_arr);
+    free(m_deg_arr);
 }
 
 /* ------------------------------------------------------------------ */

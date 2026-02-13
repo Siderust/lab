@@ -1,0 +1,97 @@
+{
+  "experiment": "solar_position",
+  "candidate_library": "libnova",
+  "reference_library": "erfa",
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "VSOP87 (analytic, all libraries)",
+    "models": {
+      "erfa": "VSOP87 via eraEpv00: heliocentric Earth \u2192 geocentric Sun (negate); BCRS equatorial output",
+      "siderust": "VSOP87 via Sun::get_apparent_geocentric_equ (includes aberration + FK5)",
+      "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
+      "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)"
+    },
+    "note": "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). Differences reflect VSOP87 truncation levels and aberration correction details."
+  },
+  "inputs": {
+    "count": 20,
+    "seed": 42
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "libnova",
+    "angular_sep_arcsec": {
+      "p50": 15.561584625471346,
+      "p90": 29.46938494368652,
+      "p99": 32.85073742508178,
+      "max": 33.570785977381114,
+      "mean": 17.140977869807667,
+      "rms": 19.27095786090276
+    },
+    "signed_ra_error_arcsec": {
+      "p50": 13.941012828532077,
+      "p90": 19.074584705765087,
+      "p99": 24.252230212248524,
+      "max": 24.320156318524074,
+      "mean": -3.2499976480380974,
+      "rms": 14.046032803426703
+    },
+    "signed_dec_error_arcsec": {
+      "p50": 4.3483352343107,
+      "p90": 24.606391237836338,
+      "p99": 28.501028163238015,
+      "max": 28.630909836407877,
+      "mean": -2.4328580401049837,
+      "rms": 13.813921432543424
+    },
+    "nan_count": 0,
+    "dist_au_diff": {
+      "p50": 0.9966135088427002,
+      "p90": 1.0161294833244883,
+      "p99": 1.0163028516196668,
+      "max": 1.0163244447365305,
+      "mean": -0.997328345666299,
+      "rms": 0.9973935258753456
+    }
+  },
+  "performance": {
+    "per_op_ns": 126881.4,
+    "throughput_ops_s": 7881,
+    "total_ns": 2537629,
+    "batch_size": 20
+  },
+  "run_metadata": {
+    "date": "2026-02-13T12:55:22Z",
+    "git_shas": {
+      "lab": "18ad1cd0fed4",
+      "siderust": "7e2e9213ef41",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "cpu": "x86_64",
+    "os": "Linux 6.17.0-14-generic",
+    "toolchain": {
+      "python": "3.12.3",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+    }
+  },
+  "reference_performance": {
+    "per_op_ns": 106121.7,
+    "throughput_ops_s": 9423
+  }
+}

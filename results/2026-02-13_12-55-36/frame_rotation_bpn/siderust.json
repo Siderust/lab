@@ -1,0 +1,143 @@
+{
+  "experiment": "frame_rotation_bpn",
+  "candidate_library": "siderust",
+  "reference_library": "erfa",
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "models": {
+      "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
+      "siderust": "IERS 2003 frame bias + Meeus precession (\u03b6,z,\u03b8) + IAU 1980 nutation (63 terms)",
+      "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
+      "libnova": "Meeus precession (\u03b6,z,\u03b8 Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)"
+    },
+    "mode": "common_denominator",
+    "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). Differences measure the model gap, not implementation bugs."
+  },
+  "inputs": {
+    "count": 20,
+    "seed": 42,
+    "epoch_range": [
+      "JD 2415020.0",
+      "JD 2488069.5"
+    ]
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "siderust",
+    "angular_error_mas": {
+      "p50": 56.80551002489574,
+      "p90": 79.68945049621169,
+      "p95": 101.47496806537025,
+      "p99": 250.93105436593896,
+      "max": 288.2950759410815,
+      "min": 12.294340506022955,
+      "mean": 66.90135583063297,
+      "rms": 86.31248735184232
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 7.450580596923934e-10,
+      "p99": 1.2069940567016583e-08,
+      "max": 1.4901161193847656e-08,
+      "min": 0.0,
+      "mean": 7.450580596923829e-10,
+      "rms": 3.332000937312528e-09
+    },
+    "matrix_frobenius": {
+      "p50": 4.825066888702285e-07,
+      "p90": 6.967813589560992e-07,
+      "p95": 2.0244603651205213e-06,
+      "p99": 2.1537953399506e-06,
+      "max": 2.18612908365812e-06,
+      "min": 2.945506301097473e-07,
+      "mean": 5.856738695514819e-07,
+      "rms": 7.795382261398031e-07
+    },
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2415020.0,
+        "angular_error_mas": 288.2950759410815
+      },
+      {
+        "jd_tt": 2488069.5,
+        "angular_error_mas": 91.64233080875373
+      },
+      {
+        "jd_tt": 2460953.086707429,
+        "angular_error_mas": 78.361352683707
+      },
+      {
+        "jd_tt": 2462235.3819180597,
+        "angular_error_mas": 77.14637440491137
+      },
+      {
+        "jd_tt": 2460676.5,
+        "angular_error_mas": 72.92886310179921
+      },
+      {
+        "jd_tt": 2460158.299625072,
+        "angular_error_mas": 72.73429931422545
+      },
+      {
+        "jd_tt": 2460310.5,
+        "angular_error_mas": 70.75924343034636
+      },
+      {
+        "jd_tt": 2459885.188284559,
+        "angular_error_mas": 68.86477049986041
+      },
+      {
+        "jd_tt": 2459580.5,
+        "angular_error_mas": 62.68908214696546
+      },
+      {
+        "jd_tt": 2457754.5,
+        "angular_error_mas": 58.80114577059798
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 3810.8,
+    "throughput_ops_s": 262412,
+    "total_ns": 76216,
+    "batch_size": 20
+  },
+  "run_metadata": {
+    "date": "2026-02-13T12:55:36Z",
+    "git_shas": {
+      "lab": "18ad1cd0fed4",
+      "siderust": "7e2e9213ef41",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "cpu": "x86_64",
+    "os": "Linux 6.17.0-14-generic",
+    "toolchain": {
+      "python": "3.12.3",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+    }
+  },
+  "reference_performance": {
+    "per_op_ns": 88294.8,
+    "throughput_ops_s": 11326
+  }
+}
