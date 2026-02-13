@@ -28,7 +28,7 @@
     "mode": "common_denominator"
   },
   "inputs": {
-    "count": 1000,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
@@ -59,10 +59,16 @@
       "rms": 0.0
     }
   },
+  "performance": {
+    "per_op_ns": 1913.12,
+    "throughput_ops_s": 522706.36447269376,
+    "total_ns": 191312,
+    "batch_size": 100
+  },
   "run_metadata": {
-    "date": "2026-02-13T12:07:10Z",
+    "date": "2026-02-13T12:32:32Z",
     "git_shas": {
-      "lab": "19bb7070b91f",
+      "lab": "b311f0229723",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -74,5 +80,9 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
+  },
+  "reference_performance": {
+    "per_op_ns": 235.0,
+    "throughput_ops_s": 4255138
   }
 }

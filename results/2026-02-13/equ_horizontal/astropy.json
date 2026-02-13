@@ -28,7 +28,7 @@
     "note": "Azimuth convention: ERFA 0\u00b0=North CW; libnova 0\u00b0=South. All adapters use the same spherical trig, differences arise from GAST model. No atmospheric refraction applied."
   },
   "inputs": {
-    "count": 1000,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
@@ -37,10 +37,10 @@
     "angular_sep_arcsec": {
       "p50": 0.0,
       "p90": 0.003073585126505738,
-      "p99": 0.00434670577101264,
-      "max": 0.00434670577101264,
-      "mean": 0.0006010590862521719,
-      "rms": 0.001381404704290243
+      "p99": 0.003073585126505738,
+      "max": 0.003073585126505738,
+      "mean": 0.0004610377689758607,
+      "rms": 0.001190394400810754
     },
     "signed_ra_error_arcsec": {
       "p50": 0.0,
@@ -60,10 +60,16 @@
     },
     "nan_count": 0
   },
+  "performance": {
+    "per_op_ns": 4930.36,
+    "throughput_ops_s": 202824.94584573942,
+    "total_ns": 493036,
+    "batch_size": 100
+  },
   "run_metadata": {
-    "date": "2026-02-13T12:07:11Z",
+    "date": "2026-02-13T12:32:34Z",
     "git_shas": {
-      "lab": "19bb7070b91f",
+      "lab": "b311f0229723",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -75,5 +81,9 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
+  },
+  "reference_performance": {
+    "per_op_ns": 197.8,
+    "throughput_ops_s": 5055867
   }
 }

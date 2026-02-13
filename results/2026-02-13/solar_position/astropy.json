@@ -28,7 +28,7 @@
     "note": "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). Differences reflect VSOP87 truncation levels and aberration correction details."
   },
   "inputs": {
-    "count": 1000,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
@@ -39,8 +39,8 @@
       "p90": 0.003073585126505738,
       "p99": 0.003073585126505738,
       "max": 0.003073585126505738,
-      "mean": 0.0006393057063131935,
-      "rms": 0.0014017704912768273
+      "mean": 0.0004917736202409181,
+      "rms": 0.001229434050602295
     },
     "signed_ra_error_arcsec": {
       "p50": 0.0,
@@ -68,10 +68,16 @@
       "rms": 0.0
     }
   },
+  "performance": {
+    "per_op_ns": 87450.2,
+    "throughput_ops_s": 11435.07962245941,
+    "total_ns": 8745020,
+    "batch_size": 100
+  },
   "run_metadata": {
-    "date": "2026-02-13T12:07:12Z",
+    "date": "2026-02-13T12:32:34Z",
     "git_shas": {
-      "lab": "19bb7070b91f",
+      "lab": "b311f0229723",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -83,5 +89,9 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
+  },
+  "reference_performance": {
+    "per_op_ns": 81748.0,
+    "throughput_ops_s": 12233
   }
 }

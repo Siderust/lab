@@ -435,6 +435,264 @@ def run_kepler_solver(lines_iter):
     print()
 
 
+def run_gmst_era_perf(lines_iter):
+    """Performance measurement for GMST/ERA computation."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+
+    jd_ut1_arr = []
+    jd_tt_arr = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_ut1_arr.append(float(parts[0]))
+        jd_tt_arr.append(float(parts[1]))
+
+    # Warm-up
+    for i in range(min(n, 100)):
+        erfa.gmst06(2451545.0, jd_ut1_arr[i] - 2451545.0,
+                    2451545.0, jd_tt_arr[i] - 2451545.0)
+
+    # Timed run
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        gmst = erfa.gmst06(2451545.0, jd_ut1_arr[i] - 2451545.0,
+                          2451545.0, jd_tt_arr[i] - 2451545.0)
+        sink += gmst
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "gmst_era_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_equ_ecl_perf(lines_iter):
+    """Performance measurement for equatorial-ecliptic transform."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+
+    jds = []
+    ras = []
+    decs = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jds.append(float(parts[0]))
+        ras.append(float(parts[1]))
+        decs.append(float(parts[2]))
+
+    # Warm-up
+    for i in range(min(n, 100)):
+        erfa.ecm06(2451545.0, jds[i] - 2451545.0)
+
+    # Timed run
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        rm = erfa.ecm06(2451545.0, jds[i] - 2451545.0)
+        sink += rm[0, 0]
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "equ_ecl_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_equ_horizontal_perf(lines_iter):
+    """Performance measurement for equatorial-horizontal transform."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+
+    params = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        params.append((
+            float(parts[0]), float(parts[1]), float(parts[2]),
+            float(parts[3]), float(parts[4]), float(parts[5])
+        ))
+
+    # Warm-up
+    for i in range(min(n, 100)):
+        jd_ut1, jd_tt, ra, dec, lon, lat = params[i]
+        gmst = erfa.gmst06(2451545.0, jd_ut1 - 2451545.0,
+                          2451545.0, jd_tt - 2451545.0)
+        ha = (gmst + lon - ra) % (2 * math.pi)
+        az, el = erfa.hd2ae(ha, dec, lat)
+
+    # Timed run
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        jd_ut1, jd_tt, ra, dec, lon, lat = params[i]
+        gmst = erfa.gmst06(2451545.0, jd_ut1 - 2451545.0,
+                          2451545.0, jd_tt - 2451545.0)
+        ha = (gmst + lon - ra) % (2 * math.pi)
+        az, el = erfa.hd2ae(ha, dec, lat)
+        sink += az
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "equ_horizontal_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_solar_position_perf(lines_iter):
+    """Performance measurement for solar position computation."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+
+    jds = []
+    for i in range(n):
+        jds.append(float(next(lines_iter).strip()))
+
+    # Warm-up
+    for i in range(min(n, 100)):
+        erfa.epv00(2451545.0, jds[i] - 2451545.0)
+
+    # Timed run
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        pvh, pvb = erfa.epv00(2451545.0, jds[i] - 2451545.0)
+        sink += pvh[0][0]
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "solar_position_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_lunar_position_perf(lines_iter):
+    """Performance measurement for lunar position computation."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+
+    jds = []
+    for i in range(n):
+        jds.append(float(next(lines_iter).strip()))
+
+    # Warm-up
+    for i in range(min(n, 100)):
+        erfa.moon98(2451545.0, jds[i] - 2451545.0)
+
+    # Timed run
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        rp = erfa.moon98(2451545.0, jds[i] - 2451545.0)
+        sink += rp[0]
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "lunar_position_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_kepler_solver_perf(lines_iter):
+    """Performance measurement for Kepler solver."""
+    n = int(next(lines_iter).strip())
+
+    m_arr = []
+    e_arr = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        m_arr.append(float(parts[0]))
+        e_arr.append(float(parts[1]))
+
+    def solve_kepler(M, e):
+        E = M
+        for _ in range(20):
+            f = E - e * math.sin(E) - M
+            fp = 1.0 - e * math.cos(E)
+            E -= f / fp
+            if abs(f) < 1e-12:
+                break
+        return E
+
+    # Warm-up
+    for i in range(min(n, 100)):
+        solve_kepler(m_arr[i], e_arr[i])
+
+    # Timed run
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        E = solve_kepler(m_arr[i], e_arr[i])
+        sink += E
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "kepler_solver_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
 def main():
     lines_iter = iter(sys.stdin)
     experiment = next(lines_iter).strip()
@@ -448,6 +706,12 @@ def main():
         "lunar_position": run_lunar_position,
         "kepler_solver": run_kepler_solver,
         "frame_rotation_bpn_perf": run_frame_rotation_bpn_perf,
+        "gmst_era_perf": run_gmst_era_perf,
+        "equ_ecl_perf": run_equ_ecl_perf,
+        "equ_horizontal_perf": run_equ_horizontal_perf,
+        "solar_position_perf": run_solar_position_perf,
+        "lunar_position_perf": run_lunar_position_perf,
+        "kepler_solver_perf": run_kepler_solver_perf,
     }
 
     if experiment not in dispatch:

@@ -328,6 +328,54 @@ def format_bpn_perf_input(epochs, directions):
     return "\n".join(lines) + "\n"
 
 
+def format_gmst_perf_input(jd_ut1, jd_tt):
+    """Format input for the GMST/ERA performance experiment."""
+    lines = ["gmst_era_perf", str(len(jd_ut1))]
+    for u, t in zip(jd_ut1, jd_tt):
+        lines.append(f"{u:.15f} {t:.15f}")
+    return "\n".join(lines) + "\n"
+
+
+def format_equ_ecl_perf_input(epochs, ra, dec):
+    """Format input for equatorial-ecliptic performance experiment."""
+    lines = ["equ_ecl_perf", str(len(epochs))]
+    for jd, r, d in zip(epochs, ra, dec):
+        lines.append(f"{jd:.15f} {r:.17e} {d:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_equ_horizontal_perf_input(jd_ut1, jd_tt, ra, dec, lon, lat):
+    """Format input for equatorial-horizontal performance experiment."""
+    lines = ["equ_horizontal_perf", str(len(jd_ut1))]
+    for u, t, r, d, lo, la in zip(jd_ut1, jd_tt, ra, dec, lon, lat):
+        lines.append(f"{u:.15f} {t:.15f} {r:.17e} {d:.17e} {lo:.17e} {la:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_solar_position_perf_input(epochs):
+    """Format input for solar position performance experiment."""
+    lines = ["solar_position_perf", str(len(epochs))]
+    for jd in epochs:
+        lines.append(f"{jd:.15f}")
+    return "\n".join(lines) + "\n"
+
+
+def format_lunar_position_perf_input(epochs):
+    """Format input for lunar position performance experiment."""
+    lines = ["lunar_position_perf", str(len(epochs))]
+    for jd in epochs:
+        lines.append(f"{jd:.15f}")
+    return "\n".join(lines) + "\n"
+
+
+def format_kepler_perf_input(M_arr, e_arr):
+    """Format input for Kepler solver performance experiment."""
+    lines = ["kepler_solver_perf", str(len(M_arr))]
+    for m, e in zip(M_arr, e_arr):
+        lines.append(f"{m:.17e} {e:.17e}")
+    return "\n".join(lines) + "\n"
+
+
 def format_equ_ecl_input(epochs, ra, dec):
     """Format input for equ_ecl experiment: jd_tt ra dec per line."""
     lines = ["equ_ecl", str(len(epochs))]
@@ -1065,7 +1113,7 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True):
     return results
 
 
-def run_experiment_gmst_era(n: int, seed: int):
+def run_experiment_gmst_era(n: int, seed: int, run_perf: bool = True):
     """
     Run the gmst_era experiment end-to-end.
 
@@ -1122,14 +1170,48 @@ def run_experiment_gmst_era(n: int, seed: int):
             "alignment": alignment_checklist("gmst_era"),
             "inputs": {"count": n, "seed": seed},
             "accuracy": accuracy,
+            "performance": {},
             "run_metadata": run_metadata(),
         }
         results.append(result)
 
+    # 4) Performance measurement
+    if run_perf:
+        perf_n = min(n, 10000)
+        print(f"  Running performance tests (N={perf_n})...")
+        perf_input = format_gmst_perf_input(jd_ut1[:perf_n], jd_tt[:perf_n])
+
+        for lib, cmd in [
+            ("erfa", [str(ERFA_BIN)]),
+            ("siderust", [str(SIDERUST_BIN)]),
+            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+            ("libnova", [str(LIBNOVA_BIN)]),
+        ]:
+            print(f"    Timing {lib}...")
+            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            if perf_data:
+                for r in results:
+                    if r["candidate_library"] == lib:
+                        r["performance"] = {
+                            "per_op_ns": perf_data.get("per_op_ns"),
+                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
+                            "total_ns": perf_data.get("total_ns"),
+                            "batch_size": perf_data.get("count"),
+                        }
+
+        # Reference performance
+        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        if perf_erfa:
+            for r in results:
+                r["reference_performance"] = {
+                    "per_op_ns": perf_erfa.get("per_op_ns"),
+                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
+                }
+
     return results
 
 
-def run_experiment_equ_ecl(n: int, seed: int):
+def run_experiment_equ_ecl(n: int, seed: int, run_perf: bool = True):
     """
     Run the equ_ecl experiment: equatorial ↔ ecliptic coordinate transform.
 
@@ -1178,13 +1260,47 @@ def run_experiment_equ_ecl(n: int, seed: int):
             "alignment": alignment_checklist("equ_ecl"),
             "inputs": {"count": n, "seed": seed},
             "accuracy": accuracy,
+            "performance": {},
             "run_metadata": run_metadata(),
         })
+
+    # 4) Performance measurement
+    if run_perf:
+        perf_n = min(n, 10000)
+        print(f"  Running performance tests (N={perf_n})...")
+        perf_input = format_equ_ecl_perf_input(epochs[:perf_n], ra[:perf_n], dec[:perf_n])
+
+        for lib, cmd in [
+            ("erfa", [str(ERFA_BIN)]),
+            ("siderust", [str(SIDERUST_BIN)]),
+            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+            ("libnova", [str(LIBNOVA_BIN)]),
+        ]:
+            print(f"    Timing {lib}...")
+            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            if perf_data:
+                for r in results:
+                    if r["candidate_library"] == lib:
+                        r["performance"] = {
+                            "per_op_ns": perf_data.get("per_op_ns"),
+                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
+                            "total_ns": perf_data.get("total_ns"),
+                            "batch_size": perf_data.get("count"),
+                        }
+
+        # Reference performance
+        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        if perf_erfa:
+            for r in results:
+                r["reference_performance"] = {
+                    "per_op_ns": perf_erfa.get("per_op_ns"),
+                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
+                }
 
     return results
 
 
-def run_experiment_equ_horizontal(n: int, seed: int):
+def run_experiment_equ_horizontal(n: int, seed: int, run_perf: bool = True):
     """
     Run the equ_horizontal experiment: equatorial → horizontal (AltAz).
 
@@ -1233,13 +1349,50 @@ def run_experiment_equ_horizontal(n: int, seed: int):
             "alignment": alignment_checklist("equ_horizontal"),
             "inputs": {"count": n, "seed": seed},
             "accuracy": accuracy,
+            "performance": {},
             "run_metadata": run_metadata(),
         })
+
+    # 4) Performance measurement
+    if run_perf:
+        perf_n = min(n, 10000)
+        print(f"  Running performance tests (N={perf_n})...")
+        perf_input = format_equ_horizontal_perf_input(
+            jd_ut1[:perf_n], jd_tt[:perf_n], ra[:perf_n], dec[:perf_n],
+            lon[:perf_n], lat[:perf_n]
+        )
+
+        for lib, cmd in [
+            ("erfa", [str(ERFA_BIN)]),
+            ("siderust", [str(SIDERUST_BIN)]),
+            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+            ("libnova", [str(LIBNOVA_BIN)]),
+        ]:
+            print(f"    Timing {lib}...")
+            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            if perf_data:
+                for r in results:
+                    if r["candidate_library"] == lib:
+                        r["performance"] = {
+                            "per_op_ns": perf_data.get("per_op_ns"),
+                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
+                            "total_ns": perf_data.get("total_ns"),
+                            "batch_size": perf_data.get("count"),
+                        }
+
+        # Reference performance
+        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        if perf_erfa:
+            for r in results:
+                r["reference_performance"] = {
+                    "per_op_ns": perf_erfa.get("per_op_ns"),
+                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
+                }
 
     return results
 
 
-def run_experiment_solar_position(n: int, seed: int):
+def run_experiment_solar_position(n: int, seed: int, run_perf: bool = True):
     """
     Run the solar_position experiment: geocentric Sun RA/Dec.
 
@@ -1289,13 +1442,47 @@ def run_experiment_solar_position(n: int, seed: int):
             "alignment": alignment_checklist("solar_position"),
             "inputs": {"count": n, "seed": seed},
             "accuracy": accuracy,
+            "performance": {},
             "run_metadata": run_metadata(),
         })
+
+    # 4) Performance measurement
+    if run_perf:
+        perf_n = min(n, 10000)
+        print(f"  Running performance tests (N={perf_n})...")
+        perf_input = format_solar_position_perf_input(epochs[:perf_n])
+
+        for lib, cmd in [
+            ("erfa", [str(ERFA_BIN)]),
+            ("siderust", [str(SIDERUST_BIN)]),
+            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+            ("libnova", [str(LIBNOVA_BIN)]),
+        ]:
+            print(f"    Timing {lib}...")
+            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            if perf_data:
+                for r in results:
+                    if r["candidate_library"] == lib:
+                        r["performance"] = {
+                            "per_op_ns": perf_data.get("per_op_ns"),
+                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
+                            "total_ns": perf_data.get("total_ns"),
+                            "batch_size": perf_data.get("count"),
+                        }
+
+        # Reference performance
+        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        if perf_erfa:
+            for r in results:
+                r["reference_performance"] = {
+                    "per_op_ns": perf_erfa.get("per_op_ns"),
+                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
+                }
 
     return results
 
 
-def run_experiment_lunar_position(n: int, seed: int):
+def run_experiment_lunar_position(n: int, seed: int, run_perf: bool = True):
     """
     Run the lunar_position experiment: geocentric Moon RA/Dec.
 
@@ -1346,13 +1533,47 @@ def run_experiment_lunar_position(n: int, seed: int):
             "alignment": alignment_checklist("lunar_position"),
             "inputs": {"count": n, "seed": seed},
             "accuracy": accuracy,
+            "performance": {},
             "run_metadata": run_metadata(),
         })
+
+    # 4) Performance measurement
+    if run_perf:
+        perf_n = min(n, 10000)
+        print(f"  Running performance tests (N={perf_n})...")
+        perf_input = format_lunar_position_perf_input(epochs[:perf_n])
+
+        for lib, cmd in [
+            ("erfa", [str(ERFA_BIN)]),
+            ("siderust", [str(SIDERUST_BIN)]),
+            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+            ("libnova", [str(LIBNOVA_BIN)]),
+        ]:
+            print(f"    Timing {lib}...")
+            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            if perf_data:
+                for r in results:
+                    if r["candidate_library"] == lib:
+                        r["performance"] = {
+                            "per_op_ns": perf_data.get("per_op_ns"),
+                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
+                            "total_ns": perf_data.get("total_ns"),
+                            "batch_size": perf_data.get("count"),
+                        }
+
+        # Reference performance
+        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        if perf_erfa:
+            for r in results:
+                r["reference_performance"] = {
+                    "per_op_ns": perf_erfa.get("per_op_ns"),
+                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
+                }
 
     return results
 
 
-def run_experiment_kepler_solver(n: int, seed: int):
+def run_experiment_kepler_solver(n: int, seed: int, run_perf: bool = True):
     """
     Run the kepler_solver experiment: Kepler's equation M→E→ν.
 
@@ -1399,8 +1620,42 @@ def run_experiment_kepler_solver(n: int, seed: int):
             "alignment": alignment_checklist("kepler_solver"),
             "inputs": {"count": n, "seed": seed},
             "accuracy": accuracy,
+            "performance": {},
             "run_metadata": run_metadata(),
         })
+
+    # 4) Performance measurement
+    if run_perf:
+        perf_n = min(n, 10000)
+        print(f"  Running performance tests (N={perf_n})...")
+        perf_input = format_kepler_perf_input(M_arr[:perf_n], e_arr[:perf_n])
+
+        for lib, cmd in [
+            ("erfa", [str(ERFA_BIN)]),
+            ("siderust", [str(SIDERUST_BIN)]),
+            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+            ("libnova", [str(LIBNOVA_BIN)]),
+        ]:
+            print(f"    Timing {lib}...")
+            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            if perf_data:
+                for r in results:
+                    if r["candidate_library"] == lib:
+                        r["performance"] = {
+                            "per_op_ns": perf_data.get("per_op_ns"),
+                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
+                            "total_ns": perf_data.get("total_ns"),
+                            "batch_size": perf_data.get("count"),
+                        }
+
+        # Reference performance
+        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        if perf_erfa:
+            for r in results:
+                r["reference_performance"] = {
+                    "per_op_ns": perf_erfa.get("per_op_ns"),
+                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
+                }
 
     return results
 
@@ -1476,12 +1731,24 @@ def main():
         "frame_rotation_bpn": lambda: run_experiment_frame_rotation_bpn(
             args.n, args.seed, run_perf=not args.no_perf
         ),
-        "gmst_era": lambda: run_experiment_gmst_era(args.n, args.seed),
-        "equ_ecl": lambda: run_experiment_equ_ecl(args.n, args.seed),
-        "equ_horizontal": lambda: run_experiment_equ_horizontal(args.n, args.seed),
-        "solar_position": lambda: run_experiment_solar_position(args.n, args.seed),
-        "lunar_position": lambda: run_experiment_lunar_position(args.n, args.seed),
-        "kepler_solver": lambda: run_experiment_kepler_solver(args.n, args.seed),
+        "gmst_era": lambda: run_experiment_gmst_era(
+            args.n, args.seed, run_perf=not args.no_perf
+        ),
+        "equ_ecl": lambda: run_experiment_equ_ecl(
+            args.n, args.seed, run_perf=not args.no_perf
+        ),
+        "equ_horizontal": lambda: run_experiment_equ_horizontal(
+            args.n, args.seed, run_perf=not args.no_perf
+        ),
+        "solar_position": lambda: run_experiment_solar_position(
+            args.n, args.seed, run_perf=not args.no_perf
+        ),
+        "lunar_position": lambda: run_experiment_lunar_position(
+            args.n, args.seed, run_perf=not args.no_perf
+        ),
+        "kepler_solver": lambda: run_experiment_kepler_solver(
+            args.n, args.seed, run_perf=not args.no_perf
+        ),
     }
 
     for exp in experiments_to_run:

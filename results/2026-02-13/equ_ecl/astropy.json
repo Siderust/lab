@@ -28,7 +28,7 @@
     "note": "ERFA and Astropy share the same IAU 2006 obliquity model (reference). Siderust uses IAU 2006 obliquity with its own Ecliptic frame implementation. libnova uses Meeus obliquity polynomial \u2014 expect ~arcsec-level differences."
   },
   "inputs": {
-    "count": 1000,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
@@ -38,9 +38,9 @@
       "p50": 0.0,
       "p90": 0.003073585126505738,
       "p99": 0.003073585126505738,
-      "max": 0.00434670577101264,
-      "mean": 0.0005270746102465112,
-      "rms": 0.0012857729067485154
+      "max": 0.003073585126505738,
+      "mean": 0.0003688302151806886,
+      "rms": 0.0010647211200991908
     },
     "signed_ra_error_arcsec": {
       "p50": 0.0,
@@ -60,10 +60,16 @@
     },
     "nan_count": 0
   },
+  "performance": {
+    "per_op_ns": 2269.92,
+    "throughput_ops_s": 440544.160146613,
+    "total_ns": 226992,
+    "batch_size": 100
+  },
   "run_metadata": {
-    "date": "2026-02-13T12:07:10Z",
+    "date": "2026-02-13T12:32:33Z",
     "git_shas": {
-      "lab": "19bb7070b91f",
+      "lab": "b311f0229723",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -75,5 +81,9 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
+  },
+  "reference_performance": {
+    "per_op_ns": 190.0,
+    "throughput_ops_s": 5264266
   }
 }

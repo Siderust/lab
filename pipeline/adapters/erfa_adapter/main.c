@@ -470,7 +470,299 @@ static void run_frame_rotation_bpn_perf(void) {
     free(jds);
     free(vecs);
 }
+static void run_gmst_era_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
 
+    double *jd_ut1_arr = malloc(n * sizeof(double));
+    double *jd_tt_arr = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        double jd_ut1, jd_tt;
+        if (scanf("%lf %lf", &jd_ut1, &jd_tt) != 2) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+        jd_ut1_arr[i] = jd_ut1;
+        jd_tt_arr[i] = jd_tt;
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double gmst = eraGmst06(2451545.0, jd_ut1_arr[i] - 2451545.0,
+                                2451545.0, jd_tt_arr[i] - 2451545.0);
+        (void)gmst;
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double gmst = eraGmst06(2451545.0, jd_ut1_arr[i] - 2451545.0,
+                                2451545.0, jd_tt_arr[i] - 2451545.0);
+        sink += gmst;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"gmst_era_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jd_ut1_arr);
+    free(jd_tt_arr);
+}
+
+static void run_equ_ecl_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *ras = malloc(n * sizeof(double));
+    double *decs = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf", &jds[i], &ras[i], &decs[i]) != 3) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double rm[3][3];
+        eraEcm06(2451545.0, jds[i] - 2451545.0, rm);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double rm[3][3];
+        eraEcm06(2451545.0, jds[i] - 2451545.0, rm);
+        sink += rm[0][0];
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"equ_ecl_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+    free(ras);
+    free(decs);
+}
+
+static void run_equ_horizontal_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *params = malloc(n * 6 * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf %lf %lf",
+                  &params[6*i], &params[6*i+1], &params[6*i+2],
+                  &params[6*i+3], &params[6*i+4], &params[6*i+5]) != 6) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double jd_ut1 = params[6*i];
+        double jd_tt = params[6*i+1];
+        double ra = params[6*i+2];
+        double dec = params[6*i+3];
+        double lon = params[6*i+4];
+        double lat = params[6*i+5];
+
+        double gmst = eraGmst06(2451545.0, jd_ut1 - 2451545.0,
+                                2451545.0, jd_tt - 2451545.0);
+        double ha = normalize_angle(gmst + lon - ra);
+        double az, alt;
+        eraHd2ae(ha, dec, lat, &az, &alt);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double jd_ut1 = params[6*i];
+        double jd_tt = params[6*i+1];
+        double ra = params[6*i+2];
+        double dec = params[6*i+3];
+        double lon = params[6*i+4];
+        double lat = params[6*i+5];
+
+        double gmst = eraGmst06(2451545.0, jd_ut1 - 2451545.0,
+                                2451545.0, jd_tt - 2451545.0);
+        double ha = normalize_angle(gmst + lon - ra);
+        double az, alt;
+        eraHd2ae(ha, dec, lat, &az, &alt);
+        sink += az;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"equ_horizontal_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(params);
+}
+
+static void run_solar_position_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double pvh[2][3], pvb[2][3];
+        eraEpv00(2451545.0, jds[i] - 2451545.0, pvh, pvb);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double pvh[2][3], pvb[2][3];
+        eraEpv00(2451545.0, jds[i] - 2451545.0, pvh, pvb);
+        sink += pvh[0][0];
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"solar_position_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_lunar_position_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double rm[3][3], rp[3];
+        eraMoon98(2451545.0, jds[i] - 2451545.0, rp);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double rp[3];
+        eraMoon98(2451545.0, jds[i] - 2451545.0, rp);
+        sink += rp[0];
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"lunar_position_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_kepler_solver_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *m_arr = malloc(n * sizeof(double));
+    double *e_arr = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf", &m_arr[i], &e_arr[i]) != 2) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double E = m_arr[i];
+        for (int iter = 0; iter < 20; iter++) {
+            double f = E - e_arr[i] * sin(E) - m_arr[i];
+            double fp = 1.0 - e_arr[i] * cos(E);
+            E -= f / fp;
+            if (fabs(f) < 1e-12) break;
+        }
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double E = m_arr[i];
+        for (int iter = 0; iter < 20; iter++) {
+            double f = E - e_arr[i] * sin(E) - m_arr[i];
+            double fp = 1.0 - e_arr[i] * cos(E);
+            E -= f / fp;
+            if (fabs(f) < 1e-12) break;
+        }
+        sink += E;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"kepler_solver_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(m_arr);
+    free(e_arr);
+}
 /* ------------------------------------------------------------------ */
 /* Main dispatcher                                                     */
 /* ------------------------------------------------------------------ */
@@ -498,6 +790,18 @@ int main(void) {
         run_kepler_solver();
     } else if (strcmp(experiment, "frame_rotation_bpn_perf") == 0) {
         run_frame_rotation_bpn_perf();
+    } else if (strcmp(experiment, "gmst_era_perf") == 0) {
+        run_gmst_era_perf();
+    } else if (strcmp(experiment, "equ_ecl_perf") == 0) {
+        run_equ_ecl_perf();
+    } else if (strcmp(experiment, "equ_horizontal_perf") == 0) {
+        run_equ_horizontal_perf();
+    } else if (strcmp(experiment, "solar_position_perf") == 0) {
+        run_solar_position_perf();
+    } else if (strcmp(experiment, "lunar_position_perf") == 0) {
+        run_lunar_position_perf();
+    } else if (strcmp(experiment, "kepler_solver_perf") == 0) {
+        run_kepler_solver_perf();
     } else {
         fprintf(stderr, "Unknown experiment: %s\n", experiment);
         return 1;

@@ -511,6 +511,302 @@ fn run_frame_rotation_bpn_perf(lines: &mut impl Iterator<Item = String>) {
     );
 }
 
+fn run_gmst_era_perf(lines: &mut impl Iterator<Item = String>) {
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+
+    let mut jd_ut1_vals: Vec<f64> = Vec::with_capacity(n);
+    let mut jd_tt_vals: Vec<f64> = Vec::with_capacity(n);
+
+    for _ in 0..n {
+        let line = lines.next().unwrap();
+        let parts: Vec<f64> = line.trim().split_whitespace()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        jd_ut1_vals.push(parts[0]);
+        jd_tt_vals.push(parts[1]);
+    }
+
+    // Warm-up
+    for i in 0..n.min(100) {
+        let jd = JulianDate::new(jd_ut1_vals[i]);
+        let gst = siderust::astro::sidereal::calculate_gst(jd);
+        std::hint::black_box(&gst);
+    }
+
+    // Timed run
+    let start = Instant::now();
+    let mut sink: f64 = 0.0;
+    for i in 0..n {
+        let jd = JulianDate::new(jd_ut1_vals[i]);
+        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
+        sink += gst_deg.value();
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+    let per_op_ns = total_ns / n as f64;
+
+    println!(
+        "{{\"experiment\":\"gmst_era_perf\",\"library\":\"siderust\",\
+         \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
+         \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+    );
+}
+
+fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+
+    let mut jds: Vec<f64> = Vec::with_capacity(n);
+    let mut ras: Vec<f64> = Vec::with_capacity(n);
+    let mut decs: Vec<f64> = Vec::with_capacity(n);
+
+    for _ in 0..n {
+        let line = lines.next().unwrap();
+        let parts: Vec<f64> = line.trim().split_whitespace()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        jds.push(parts[0]);
+        ras.push(parts[1]);
+        decs.push(parts[2]);
+    }
+
+    // Warm-up
+    for i in 0..n.min(100) {
+        let jd = JulianDate::new(jds[i]);
+        let icrs_pos = siderust::coordinates::spherical::position::GCRS::<AstronomicalUnit>::new(
+            ras[i].to_degrees() * DEG,
+            decs[i].to_degrees() * DEG,
+            1.0 * qtty::AU,
+        );
+        let ecl_pos: siderust::coordinates::spherical::Position<
+            siderust::coordinates::centers::Geocentric,
+            Ecliptic,
+            AstronomicalUnit,
+        > = icrs_pos.transform(jd);
+        std::hint::black_box(&ecl_pos);
+    }
+
+    // Timed run
+    let start = Instant::now();
+    let mut sink: f64 = 0.0;
+    for i in 0..n {
+        let jd = JulianDate::new(jds[i]);
+        let icrs_pos = siderust::coordinates::spherical::position::GCRS::<AstronomicalUnit>::new(
+            ras[i].to_degrees() * DEG,
+            decs[i].to_degrees() * DEG,
+            1.0 *qtty::AU,
+        );
+        let ecl_pos: siderust::coordinates::spherical::Position<
+            siderust::coordinates::centers::Geocentric,
+            Ecliptic,
+            AstronomicalUnit,
+        > = icrs_pos.transform(jd);
+        sink += ecl_pos.lon().value();
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+    let per_op_ns = total_ns / n as f64;
+
+    println!(
+        "{{\"experiment\":\"equ_ecl_perf\",\"library\":\"siderust\",\
+         \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
+         \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+    );
+}
+
+fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+
+    let mut params: Vec<(f64, f64, f64, f64, f64, f64)> = Vec::with_capacity(n);
+
+    for _ in 0..n {
+        let line = lines.next().unwrap();
+        let parts: Vec<f64> = line.trim().split_whitespace()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        params.push((parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]));
+    }
+
+    // Warm-up
+    for i in 0..n.min(100) {
+        let (jd_ut1, _, ra, dec, lon, lat) = params[i];
+        let jd = JulianDate::new(jd_ut1);
+        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
+        let gst_rad = gst_deg.value().to_radians();
+        let last_rad = gst_rad + lon;
+        let ha_rad = last_rad - ra;
+        let sh = ha_rad.sin();
+        let ch = ha_rad.cos();
+        let sd = dec.sin();
+        let cd = dec.cos();
+        let sp = lat.sin();
+        let cp = lat.cos();
+        let x = -ch * cd * sp + sd * cp;
+        let y = -sh * cd;
+        let z = ch * cd * cp + sd * sp;
+        let r = (x * x + y * y).sqrt();
+        let mut az = if r != 0.0 { y.atan2(x) } else { 0.0 };
+        if az < 0.0 { az += std::f64::consts::TAU; }
+        let alt = z.atan2(r);
+        std::hint::black_box((az, alt));
+    }
+
+    // Timed run
+    let start = Instant::now();
+    let mut sink: (f64, f64) = (0.0, 0.0);
+    for i in 0..n {
+        let (jd_ut1, _, ra, dec, lon, lat) = params[i];
+        let jd = JulianDate::new(jd_ut1);
+        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
+        let gst_rad = gst_deg.value().to_radians();
+        let last_rad = gst_rad + lon;
+        let ha_rad = last_rad - ra;
+        let sh = ha_rad.sin();
+        let ch = ha_rad.cos();
+        let sd = dec.sin();
+        let cd = dec.cos();
+        let sp = lat.sin();
+        let cp = lat.cos();
+        let x = -ch * cd * sp + sd * cp;
+        let y = -sh * cd;
+        let z = ch * cd * cp + sd * sp;
+        let r = (x * x + y * y).sqrt();
+        let mut az = if r != 0.0 { y.atan2(x) } else { 0.0 };
+        if az < 0.0 { az += std::f64::consts::TAU; }
+        let alt = z.atan2(r);
+        sink = (az, alt);
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+    let per_op_ns = total_ns / n as f64;
+
+    println!(
+        "{{\"experiment\":\"equ_horizontal_perf\",\"library\":\"siderust\",\
+         \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
+         \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink.0,
+    );
+}
+
+fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+
+    let mut jds: Vec<f64> = Vec::with_capacity(n);
+
+    for _ in 0..n {
+        let line = lines.next().unwrap();
+        jds.push(line.trim().parse().unwrap());
+    }
+
+    // Warm-up
+    for i in 0..n.min(100) {
+        let jd = JulianDate::new(jds[i]);
+        let pos = Sun::get_apparent_geocentric_equ::<AstronomicalUnit>(jd);
+        std::hint::black_box(&pos);
+    }
+
+    // Timed run
+    let start = Instant::now();
+    let mut sink: f64 = 0.0;
+    for i in 0..n {
+        let jd = JulianDate::new(jds[i]);
+        let pos = Sun::get_apparent_geocentric_equ::<AstronomicalUnit>(jd);
+        sink += pos.distance.value();
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+    let per_op_ns = total_ns / n as f64;
+
+    println!(
+        "{{\"experiment\":\"solar_position_perf\",\"library\":\"siderust\",\
+         \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
+         \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+    );
+}
+
+fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+
+    let mut jds: Vec<f64> = Vec::with_capacity(n);
+
+    for _ in 0..n {
+        let line = lines.next().unwrap();
+        jds.push(line.trim().parse().unwrap());
+    }
+
+    // Warm-up
+    for i in 0..n.min(100) {
+        let jd = JulianDate::new(jds[i]);
+        let site = ObserverSite::new(0.0 * DEG, 0.0 * DEG, 0.0 * M);
+        let pos = Moon::get_apparent_topocentric_equ::<Kilometer>(jd, site);
+        std::hint::black_box(&pos);
+    }
+
+    // Timed run
+    let start = Instant::now();
+    let mut sink: f64 = 0.0;
+    for i in 0..n {
+        let jd = JulianDate::new(jds[i]);
+        let site = ObserverSite::new(0.0 * DEG, 0.0 * DEG, 0.0 * M);
+        let pos = Moon::get_apparent_topocentric_equ::<Kilometer>(jd, site);
+        sink += pos.distance.value();
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+    let per_op_ns = total_ns / n as f64;
+
+    println!(
+        "{{\"experiment\":\"lunar_position_perf\",\"library\":\"siderust\",\
+         \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
+         \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+    );
+}
+
+fn run_kepler_solver_perf(lines: &mut impl Iterator<Item = String>) {
+    use qtty::RAD;
+
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+
+    let mut m_vals: Vec<f64> = Vec::with_capacity(n);
+    let mut e_vals: Vec<f64> = Vec::with_capacity(n);
+
+    for _ in 0..n {
+        let line = lines.next().unwrap();
+        let parts: Vec<f64> = line.trim().split_whitespace()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        m_vals.push(parts[0]);
+        e_vals.push(parts[1]);
+    }
+
+    // Warm-up
+    for i in 0..n.min(100) {
+        let e_anom = solve_keplers_equation(m_vals[i] * RAD, e_vals[i]);
+        std::hint::black_box(&e_anom);
+    }
+
+    // Timed run
+    let start = Instant::now();
+    let mut sink: f64 = 0.0;
+    for i in 0..n {
+        let e_anom = solve_keplers_equation(m_vals[i] * RAD, e_vals[i]);
+        sink += e_anom.value();
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+    let per_op_ns = total_ns / n as f64;
+
+    println!(
+        "{{\"experiment\":\"kepler_solver_perf\",\"library\":\"siderust\",\
+         \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
+         \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+    );
+}
+
 fn main() {
     let stdin = io::stdin();
     let mut lines = stdin.lock().lines().map(|l| l.unwrap());
@@ -527,6 +823,12 @@ fn main() {
         "lunar_position" => run_lunar_position(&mut lines),
         "kepler_solver" => run_kepler_solver(&mut lines),
         "frame_rotation_bpn_perf" => run_frame_rotation_bpn_perf(&mut lines),
+        "gmst_era_perf" => run_gmst_era_perf(&mut lines),
+        "equ_ecl_perf" => run_equ_ecl_perf(&mut lines),
+        "equ_horizontal_perf" => run_equ_horizontal_perf(&mut lines),
+        "solar_position_perf" => run_solar_position_perf(&mut lines),
+        "lunar_position_perf" => run_lunar_position_perf(&mut lines),
+        "kepler_solver_perf" => run_kepler_solver_perf(&mut lines),
         _ => {
             eprintln!("Unknown experiment: {}", experiment);
             std::process::exit(1);

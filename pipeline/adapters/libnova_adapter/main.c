@@ -491,6 +491,282 @@ static void run_frame_rotation_bpn_perf(void) {
     free(vecs);
 }
 
+static void run_gmst_era_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jd_ut1_arr = malloc(n * sizeof(double));
+    double *jd_tt_arr = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf", &jd_ut1_arr[i], &jd_tt_arr[i]) != 2) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double gmst = ln_get_mean_sidereal_time(jd_ut1_arr[i]);
+        (void)gmst;
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double gmst = ln_get_mean_sidereal_time(jd_ut1_arr[i]);
+        sink += gmst;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"gmst_era_perf\",\"library\":\"libnova\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jd_ut1_arr);
+    free(jd_tt_arr);
+}
+
+static void run_equ_ecl_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *ras = malloc(n * sizeof(double));
+    double *decs = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf", &jds[i], &ras[i], &decs[i]) != 3) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        struct ln_equ_posn equ = { ras[i] * (180.0 / M_PI), decs[i] * (180.0 / M_PI) };
+        struct ln_lnlat_posn ecl;
+        ln_get_ecl_from_equ(&equ, jds[i], &ecl);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        struct ln_equ_posn equ = { ras[i] * (180.0 / M_PI), decs[i] * (180.0 / M_PI) };
+        struct ln_lnlat_posn ecl;
+        ln_get_ecl_from_equ(&equ, jds[i], &ecl);
+        sink += ecl.lng;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"equ_ecl_perf\",\"library\":\"libnova\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+    free(ras);
+    free(decs);
+}
+
+static void run_equ_horizontal_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *params = malloc(n * 6 * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf %lf %lf",
+                  &params[6*i], &params[6*i+1], &params[6*i+2],
+                  &params[6*i+3], &params[6*i+4], &params[6*i+5]) != 6) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double jd_ut1 = params[6*i];
+        double ra = params[6*i+2] * (180.0 / M_PI);
+        double dec = params[6*i+3] * (180.0 / M_PI);
+        double lon = params[6*i+4] * (180.0 / M_PI);
+        double lat = params[6*i+5] * (180.0 / M_PI);
+
+        struct ln_equ_posn object = { ra, dec };
+        struct ln_lnlat_posn observer = { lon, lat };
+        struct ln_hrz_posn hrz;
+        ln_get_hrz_from_equ(&object, &observer, jd_ut1, &hrz);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double jd_ut1 = params[6*i];
+        double ra = params[6*i+2] * (180.0 / M_PI);
+        double dec = params[6*i+3] * (180.0 / M_PI);
+        double lon = params[6*i+4] * (180.0 / M_PI);
+        double lat = params[6*i+5] * (180.0 / M_PI);
+
+        struct ln_equ_posn object = { ra, dec };
+        struct ln_lnlat_posn observer = { lon, lat };
+        struct ln_hrz_posn hrz;
+        ln_get_hrz_from_equ(&object, &observer, jd_ut1, &hrz);
+        sink += hrz.az;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"equ_horizontal_perf\",\"library\":\"libnova\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(params);
+}
+
+static void run_solar_position_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        struct ln_equ_posn equ;
+        ln_get_solar_equ_coords(jds[i], &equ);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        struct ln_equ_posn equ;
+        ln_get_solar_equ_coords(jds[i], &equ);
+        sink += equ.ra;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"solar_position_perf\",\"library\":\"libnova\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_lunar_position_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        struct ln_equ_posn equ;
+        ln_get_lunar_equ_coords(jds[i], &equ);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        struct ln_equ_posn equ;
+        ln_get_lunar_equ_coords(jds[i], &equ);
+        sink += equ.ra;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"lunar_position_perf\",\"library\":\"libnova\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_kepler_solver_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *m_arr = malloc(n * sizeof(double));
+    double *e_arr = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf", &m_arr[i], &e_arr[i]) != 2) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double E = ln_solve_kepler(e_arr[i], m_arr[i]);
+        (void)E;
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double E = ln_solve_kepler(e_arr[i], m_arr[i]);
+        sink += E;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"kepler_solver_perf\",\"library\":\"libnova\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(m_arr);
+    free(e_arr);
+}
+
 /* ------------------------------------------------------------------ */
 /* Main dispatcher                                                     */
 /* ------------------------------------------------------------------ */
@@ -518,6 +794,18 @@ int main(void) {
         run_kepler_solver();
     } else if (strcmp(experiment, "frame_rotation_bpn_perf") == 0) {
         run_frame_rotation_bpn_perf();
+    } else if (strcmp(experiment, "gmst_era_perf") == 0) {
+        run_gmst_era_perf();
+    } else if (strcmp(experiment, "equ_ecl_perf") == 0) {
+        run_equ_ecl_perf();
+    } else if (strcmp(experiment, "equ_horizontal_perf") == 0) {
+        run_equ_horizontal_perf();
+    } else if (strcmp(experiment, "solar_position_perf") == 0) {
+        run_solar_position_perf();
+    } else if (strcmp(experiment, "lunar_position_perf") == 0) {
+        run_lunar_position_perf();
+    } else if (strcmp(experiment, "kepler_solver_perf") == 0) {
+        run_kepler_solver_perf();
     } else {
         fprintf(stderr, "Unknown experiment: %s\n", experiment);
         return 1;

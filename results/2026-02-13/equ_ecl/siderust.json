@@ -28,42 +28,48 @@
     "note": "ERFA and Astropy share the same IAU 2006 obliquity model (reference). Siderust uses IAU 2006 obliquity with its own Ecliptic frame implementation. libnova uses Meeus obliquity polynomial \u2014 expect ~arcsec-level differences."
   },
   "inputs": {
-    "count": 1000,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
     "reference": "erfa",
     "candidate": "siderust",
     "angular_sep_arcsec": {
-      "p50": 1815.162226599428,
-      "p90": 3920.092912485747,
-      "p99": 4731.691641960128,
-      "max": 4995.493041709059,
-      "mean": 1964.788390038854,
-      "rms": 2371.9355571923556
+      "p50": 1652.5834153689498,
+      "p90": 3741.6672863732174,
+      "p99": 4596.617390212367,
+      "max": 4737.775489216599,
+      "mean": 1868.1080953635455,
+      "rms": 2271.5854943423183
     },
     "signed_ra_error_arcsec": {
-      "p50": 2485.9782088524234,
-      "p90": 4512.122553294506,
-      "p99": 4986.044280681055,
-      "max": 5030.991051769644,
-      "mean": -2486.952417787634,
-      "rms": 2896.9576193245034
+      "p50": 2354.5431307277545,
+      "p90": 4189.1703505701435,
+      "p99": 5011.82501432077,
+      "max": 5029.878531089793,
+      "mean": -2351.9666333952955,
+      "rms": 2829.9084015099847
     },
     "signed_dec_error_arcsec": {
-      "p50": 1.0274139361271752,
-      "p90": 3.095812356856572,
-      "p99": 4.060529851809038,
-      "max": 4.296197232560416,
-      "mean": -0.04181294377556037,
-      "rms": 1.779785735254306
+      "p50": 1.21664565589955,
+      "p90": 3.152051356266653,
+      "p99": 3.959500264685689,
+      "max": 4.350656778844188,
+      "mean": -0.11513425620742629,
+      "rms": 1.7384683742918121
     },
     "nan_count": 0
   },
+  "performance": {
+    "per_op_ns": 247.3,
+    "throughput_ops_s": 4043999,
+    "total_ns": 24728,
+    "batch_size": 100
+  },
   "run_metadata": {
-    "date": "2026-02-13T12:07:10Z",
+    "date": "2026-02-13T12:32:33Z",
     "git_shas": {
-      "lab": "19bb7070b91f",
+      "lab": "b311f0229723",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -75,5 +81,9 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
+  },
+  "reference_performance": {
+    "per_op_ns": 190.0,
+    "throughput_ops_s": 5264266
   }
 }

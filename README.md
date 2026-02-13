@@ -171,3 +171,5 @@ At maturity, this lab should produce:
 ## User manual
 
 See `USER_MANUAL.md` for instructions on running the analysis pipeline and interpreting/visualizing the results.
+
+See `PERFORMANCE_BENCHMARKING.md` for comprehensive documentation on the performance benchmarking framework, including metrics, usage, output format, and guidelines for extending the framework to new experiments.

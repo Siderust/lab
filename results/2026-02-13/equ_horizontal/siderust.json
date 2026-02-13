@@ -28,42 +28,48 @@
     "note": "Azimuth convention: ERFA 0\u00b0=North CW; libnova 0\u00b0=South. All adapters use the same spherical trig, differences arise from GAST model. No atmospheric refraction applied."
   },
   "inputs": {
-    "count": 1000,
+    "count": 100,
     "seed": 42
   },
   "accuracy": {
     "reference": "erfa",
     "candidate": "siderust",
     "angular_sep_arcsec": {
-      "p50": 8.049077768907953,
-      "p90": 14.209574305301304,
-      "p99": 16.362085546080845,
-      "max": 16.734869439827097,
-      "mean": 8.121902968006825,
-      "rms": 9.304570242667102
+      "p50": 8.468020476915337,
+      "p90": 14.59507081643013,
+      "p99": 16.77279368087226,
+      "max": 17.090318200585337,
+      "mean": 8.20143501443294,
+      "rms": 9.368606099034489
     },
     "signed_ra_error_arcsec": {
-      "p50": 5.345621923464012,
-      "p90": 16.186431396744446,
-      "p99": 48.62782571445289,
-      "max": 181.61440063733312,
-      "mean": 0.6853498963438823,
-      "rms": 14.931189066981341
+      "p50": 6.287753076948774,
+      "p90": 17.7367535073584,
+      "p99": 64.14133504254879,
+      "max": 64.47446839540011,
+      "mean": 1.545792062169438,
+      "rms": 14.193366198912582
     },
     "signed_dec_error_arcsec": {
-      "p50": 4.4980568851523035,
-      "p90": 11.709017724568158,
-      "p99": 15.016064564436304,
-      "max": 16.60446184989794,
-      "mean": 0.1547149105549868,
-      "rms": 6.748811168862668
+      "p50": 3.189298712665644,
+      "p90": 9.99175889758731,
+      "p99": 13.218972385995304,
+      "max": 14.398579207683731,
+      "mean": 0.39048183438630046,
+      "rms": 5.940193875230394
     },
     "nan_count": 0
   },
+  "performance": {
+    "per_op_ns": 348.4,
+    "throughput_ops_s": 2869935,
+    "total_ns": 34844,
+    "batch_size": 100
+  },
   "run_metadata": {
-    "date": "2026-02-13T12:07:11Z",
+    "date": "2026-02-13T12:32:33Z",
     "git_shas": {
-      "lab": "19bb7070b91f",
+      "lab": "b311f0229723",
       "siderust": "7e2e9213ef41",
       "erfa": "1d9738bed995",
       "libnova": "655bcd1aec9d"
@@ -75,5 +81,9 @@
       "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
       "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
     }
+  },
+  "reference_performance": {
+    "per_op_ns": 197.8,
+    "throughput_ops_s": 5055867
   }
 }
