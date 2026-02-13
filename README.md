@@ -1,4 +1,4 @@
-# siderust/lab
+# Astro-Tools Benchmark Laboratory
 
 This repository is a benchmarking and validation “laboratory” for comparing **Siderust** against a small set of established astronomy/astrodynamics libraries that are vendored as git submodules (and implemented in different languages). The goal is to produce **empirical, reproducible** answers to questions like:
 

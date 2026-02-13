@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =================================================================
-# Siderust Lab — Build & Run Script
+# Astro-Tools Benchmark Laboratory — Build & Run Script
 #
 # Usage:
 #   ./run.sh              # Build all + run all experiments (N=1000)
