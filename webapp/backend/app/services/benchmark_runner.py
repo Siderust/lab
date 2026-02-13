@@ -182,6 +182,9 @@ class BenchmarkRunner:
                     pass
             return status
 
+        # Store config in status for visibility
+        status.config = request
+
         # Build command — use lab venv python, not bare python3
         python = self._python_executable()
         cmd = [python, str(self.orchestrator)]
@@ -191,9 +194,12 @@ class BenchmarkRunner:
         cmd.extend(["--experiments", exps])
         cmd.extend(["--n", str(request.n)])
         cmd.extend(["--seed", str(request.seed)])
+        cmd.extend(["--perf-rounds", str(request.perf_rounds)])
         cmd.append("--no-build")
         if request.no_perf:
             cmd.append("--no-perf")
+        if request.ci_mode:
+            cmd.append("--ci")
 
         logger.info("Starting benchmark: %s", " ".join(cmd))
 
@@ -282,6 +288,34 @@ class BenchmarkRunner:
         logger.info("Job %s cancelled successfully", job_id)
         return True
 
+    def _parse_progress(self, job_id: str, line: str) -> None:
+        """Parse [PROGRESS] lines from orchestrator to update job status."""
+        if not line.startswith("[PROGRESS]"):
+            return
+        status = self._jobs.get(job_id)
+        if status is None:
+            return
+
+        # Parse: [PROGRESS] experiment=<name> step=<step> current=<n> total=<m> | <message>
+        try:
+            parts = line.split("|", 1)
+            prefix = parts[0]
+            tokens = prefix.split()
+            for token in tokens[1:]:  # skip [PROGRESS]
+                if token.startswith("experiment="):
+                    status.current_experiment = token.split("=", 1)[1]
+                elif token.startswith("step="):
+                    status.current_step = token.split("=", 1)[1]
+                elif token.startswith("current="):
+                    current = int(token.split("=", 1)[1])
+                    for t2 in tokens:
+                        if t2.startswith("total="):
+                            total = int(t2.split("=", 1)[1])
+                            if total > 0:
+                                status.progress_pct = round(current / total * 100, 1)
+        except Exception:
+            pass
+
     async def _read_output(
         self, job_id: str, proc: asyncio.subprocess.Process
     ) -> None:
@@ -291,6 +325,8 @@ class BenchmarkRunner:
                 assert proc.stdout is not None
                 async for raw_line in proc.stdout:
                     line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
+                    # Parse progress markers
+                    self._parse_progress(job_id, line)
                     # Buffer in memory
                     self._log_buffers.setdefault(job_id, []).append(line)
                     # Persist to disk

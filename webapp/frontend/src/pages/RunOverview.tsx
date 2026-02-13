@@ -164,22 +164,99 @@ export default function RunOverview() {
         <ComparisonMatrix analytics={analytics} />
       </section>
 
-      {/* ─── Run metadata ─────────────────────────────────────── */}
-      {Object.keys(run.git_shas).length > 0 && (
-        <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-          <h3 className="text-xs font-medium uppercase text-gray-400 mb-2">
-            Run Metadata
-          </h3>
-          <div className="flex flex-wrap gap-6">
-            {Object.entries(run.git_shas).map(([repo, sha]) => (
-              <div key={repo} className="text-xs">
-                <span className="text-gray-400">{repo}:</span>{" "}
-                <span className="font-mono text-gray-300">{sha}</span>
+      {/* ─── Benchmark Configuration ──────────────────────────── */}
+      {(() => {
+        const firstResult = Object.values(run.experiments)[0]?.[0];
+        const config = firstResult?.benchmark_config as Record<string, unknown> | undefined;
+        const inputs = firstResult?.inputs as Record<string, unknown> | undefined;
+        const meta = firstResult?.run_metadata;
+
+        return (config || inputs || meta) ? (
+          <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-4 space-y-4">
+            <h3 className="text-xs font-medium uppercase text-gray-400 mb-2">
+              Run Configuration & Environment
+            </h3>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {inputs?.count != null && (
+                <div className="text-xs">
+                  <span className="text-gray-500">Test Cases (N):</span>{" "}
+                  <span className="font-mono text-gray-300">{String(inputs.count)}</span>
+                </div>
+              )}
+              {inputs?.seed != null && (
+                <div className="text-xs">
+                  <span className="text-gray-500">Seed:</span>{" "}
+                  <span className="font-mono text-gray-300">{String(inputs.seed)}</span>
+                </div>
+              )}
+              {config?.perf_rounds != null && (
+                <div className="text-xs">
+                  <span className="text-gray-500">Perf Rounds:</span>{" "}
+                  <span className="font-mono text-gray-300">{String(config.perf_rounds)}</span>
+                </div>
+              )}
+              {inputs?.dataset_fingerprint != null && (
+                <div className="text-xs">
+                  <span className="text-gray-500">Dataset ID:</span>{" "}
+                  <span className="font-mono text-gray-300">{String(inputs.dataset_fingerprint)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Environment info */}
+            {meta && (
+              <div className="border-t border-gray-800 pt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {meta.cpu_model && (
+                  <div className="text-xs">
+                    <span className="text-gray-500">CPU:</span>{" "}
+                    <span className="text-gray-300">{meta.cpu_model}</span>
+                  </div>
+                )}
+                {meta.cpu_count != null && (
+                  <div className="text-xs">
+                    <span className="text-gray-500">Cores:</span>{" "}
+                    <span className="text-gray-300">{meta.cpu_count}</span>
+                  </div>
+                )}
+                {meta.os && (
+                  <div className="text-xs">
+                    <span className="text-gray-500">OS:</span>{" "}
+                    <span className="text-gray-300">{meta.os}</span>
+                  </div>
+                )}
+                {meta.git_branch && (
+                  <div className="text-xs">
+                    <span className="text-gray-500">Branch:</span>{" "}
+                    <span className="font-mono text-gray-300">{meta.git_branch}</span>
+                  </div>
+                )}
+                {meta.toolchain && Object.entries(meta.toolchain).map(([tool, version]) => (
+                  <div key={tool} className="text-xs">
+                    <span className="text-gray-500">{tool}:</span>{" "}
+                    <span className="text-gray-300">{version}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            )}
+
+            {/* Git SHAs */}
+            {Object.keys(run.git_shas).length > 0 && (
+              <div className="border-t border-gray-800 pt-3">
+                <p className="text-xs text-gray-500 mb-1.5">Git SHAs:</p>
+                <div className="flex flex-wrap gap-4">
+                  {Object.entries(run.git_shas).map(([repo, sha]) => (
+                    <div key={repo} className="text-xs">
+                      <span className="text-gray-400">{repo}:</span>{" "}
+                      <span className="font-mono text-gray-300">{sha}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        ) : null;
+      })()}
     </div>
   );
 }

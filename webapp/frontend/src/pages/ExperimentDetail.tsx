@@ -55,11 +55,12 @@ export default function ExperimentDetail() {
 
   const ref = results[0]?.reference_library ?? "erfa";
   const mode = results[0]?.alignment?.mode ?? "common_denominator";
+  const desc = results[0]?.description as Record<string, string> | undefined;
 
   return (
     <div>
       <Header
-        title={experiment!.replace(/_/g, " ")}
+        title={desc?.title ?? experiment!.replace(/_/g, " ")}
         subtitle={`Reference: ${ref} \u2014 Mode: ${mode}`}
         actions={
           <Link
@@ -71,6 +72,32 @@ export default function ExperimentDetail() {
           </Link>
         }
       />
+
+      {/* Experiment description for non-experts */}
+      {desc && (desc.what || desc.why) && (
+        <div className="rounded-xl border border-blue-800/40 bg-blue-950/20 px-5 py-4 mb-6">
+          {desc.what && (
+            <p className="text-sm text-blue-200/80 mb-2">
+              <span className="font-medium text-blue-200">What:</span> {desc.what}
+            </p>
+          )}
+          {desc.why && (
+            <p className="text-sm text-blue-200/70 mb-2">
+              <span className="font-medium text-blue-200">Why it matters:</span> {desc.why}
+            </p>
+          )}
+          {desc.units && (
+            <p className="text-sm text-blue-200/60 mb-2">
+              <span className="font-medium text-blue-200">Units:</span> {desc.units}
+            </p>
+          )}
+          {desc.interpret && (
+            <p className="text-sm text-blue-200/60">
+              <span className="font-medium text-blue-200">How to interpret:</span> {desc.interpret}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-6 border-b border-gray-800">
@@ -633,6 +660,144 @@ function PerformanceTab({ results }: { results: ExperimentResult[] }) {
           </div>
         </div>
       )}
+
+      {/* Detailed performance statistics table */}
+      <PerfStatsTable results={results} refLib={refLib} />
+
+      {/* Performance warnings */}
+      <PerfWarnings results={results} />
+    </div>
+  );
+}
+
+/** Detailed performance statistics table with multi-sample data. */
+function PerfStatsTable({ results, refLib }: { results: ExperimentResult[]; refLib: string }) {
+  const allPerf = results.map((r) => {
+    const perf = r.performance as Record<string, unknown>;
+    return { library: r.candidate_library, perf };
+  }).filter((p) => p.perf?.per_op_ns != null);
+
+  // Add reference
+  const refPerfData = results[0]?.reference_performance as Record<string, unknown>;
+  if (refPerfData?.per_op_ns != null) {
+    allPerf.unshift({ library: refLib, perf: refPerfData });
+  }
+
+  if (allPerf.length === 0) return null;
+
+  // Check if multi-sample data is available
+  const hasMultiSample = allPerf.some((p) => p.perf?.rounds != null && (p.perf.rounds as number) > 1);
+
+  return (
+    <div className="rounded-xl border border-gray-800 overflow-x-auto">
+      <div className="border-b border-gray-800 px-4 py-2.5">
+        <h3 className="text-xs font-medium uppercase text-gray-400">
+          Performance Statistics {hasMultiSample ? "(Multi-Sample)" : "(Single Pass)"}
+        </h3>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-gray-800 bg-gray-900/80 text-left text-xs uppercase text-gray-400">
+            <th className="px-3 py-2">Library</th>
+            <th className="px-3 py-2 text-right">Median (ns/op)</th>
+            {hasMultiSample && (
+              <>
+                <th className="px-3 py-2 text-right">Std Dev</th>
+                <th className="px-3 py-2 text-right">Min</th>
+                <th className="px-3 py-2 text-right">Max</th>
+                <th className="px-3 py-2 text-right">CV%</th>
+                <th className="px-3 py-2 text-right">95% CI</th>
+                <th className="px-3 py-2 text-right">Rounds</th>
+              </>
+            )}
+            <th className="px-3 py-2 text-right">Throughput</th>
+          </tr>
+        </thead>
+        <tbody>
+          {allPerf.map((p) => {
+            const ns = p.perf.per_op_ns as number;
+            const stdDev = p.perf.per_op_ns_std_dev as number | undefined;
+            const min = p.perf.per_op_ns_min as number | undefined;
+            const max = p.perf.per_op_ns_max as number | undefined;
+            const cv = p.perf.per_op_ns_cv_pct as number | undefined;
+            const ci95 = p.perf.per_op_ns_ci95 as [number, number] | undefined;
+            const rounds = p.perf.rounds as number | undefined;
+            const throughput = p.perf.throughput_ops_s as number | undefined;
+
+            return (
+              <tr key={p.library} className="border-t border-gray-800/50 hover:bg-gray-800/30">
+                <td className="px-3 py-2">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: libColor(p.library) }} />
+                    <span className="text-gray-200 font-medium">{p.library}</span>
+                    {p.library === refLib && (
+                      <span className="text-[10px] text-gray-500">(ref)</span>
+                    )}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right font-mono text-gray-300">
+                  {fmtNs(ns)}
+                </td>
+                {hasMultiSample && (
+                  <>
+                    <td className="px-3 py-2 text-right font-mono text-gray-400">
+                      {stdDev != null ? `\u00B1${fmtNs(stdDev)}` : "\u2014"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-400">
+                      {min != null ? fmtNs(min) : "\u2014"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-400">
+                      {max != null ? fmtNs(max) : "\u2014"}
+                    </td>
+                    <td className={`px-3 py-2 text-right font-mono ${
+                      cv != null && cv > 20 ? "text-yellow-400" : "text-gray-400"
+                    }`}>
+                      {cv != null ? `${cv.toFixed(1)}%` : "\u2014"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-400">
+                      {ci95 ? `[${fmtNs(ci95[0])}, ${fmtNs(ci95[1])}]` : "\u2014"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-400">
+                      {rounds ?? "\u2014"}
+                    </td>
+                  </>
+                )}
+                <td className="px-3 py-2 text-right font-mono text-gray-400">
+                  {throughput != null ? `${fmtOpsS(throughput)} ops/s` : "\u2014"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Show performance measurement warnings. */
+function PerfWarnings({ results }: { results: ExperimentResult[] }) {
+  const allWarnings: { library: string; warnings: string[] }[] = [];
+  for (const r of results) {
+    const perf = r.performance as Record<string, unknown>;
+    const w = perf?.warnings as string[] | undefined;
+    if (w && w.length > 0) {
+      allWarnings.push({ library: r.candidate_library, warnings: w });
+    }
+  }
+
+  if (allWarnings.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-yellow-700/40 bg-yellow-950/30 px-4 py-3">
+      <p className="text-xs font-medium text-yellow-300 mb-2">Performance Measurement Warnings</p>
+      {allWarnings.map(({ library, warnings }) => (
+        <div key={library} className="mb-1.5">
+          <span className="text-xs font-medium text-yellow-200">{library}:</span>
+          {warnings.map((w, i) => (
+            <p key={i} className="text-xs text-yellow-200/70 ml-2">{w}</p>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

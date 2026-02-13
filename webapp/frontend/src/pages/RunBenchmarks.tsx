@@ -6,13 +6,15 @@ import type { BenchmarkRequest, BenchmarkStatus } from "../api/types";
 import Header from "../components/layout/Header";
 import BenchmarkForm from "../components/benchmark/BenchmarkForm";
 import LogStream from "../components/benchmark/LogStream";
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, Settings2 } from "lucide-react";
 
 export default function RunBenchmarks() {
   const navigate = useNavigate();
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [isCancelling, setIsCancelling] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [currentConfig, setCurrentConfig] = useState<BenchmarkRequest | null>(null);
 
   // View-logs state for past jobs
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
@@ -36,6 +38,8 @@ export default function RunBenchmarks() {
   const handleSubmit = useCallback(
     async (request: BenchmarkRequest) => {
       setStatus("starting");
+      setLogLines([]);
+      setCurrentConfig(request);
 
       try {
         const job = await startBenchmark(request);
@@ -44,11 +48,12 @@ export default function RunBenchmarks() {
 
         subscribeBenchmarkLogs(
           job.job_id,
-          () => {},
+          (line) => {
+            setLogLines((prev) => [...prev, line]);
+          },
           (finalStatus) => {
             setStatus(finalStatus);
             if (finalStatus === "completed") {
-              // Navigate to runs list after a short delay
               setTimeout(() => navigate("/"), 2000);
             }
           }
@@ -103,28 +108,65 @@ export default function RunBenchmarks() {
           
           {/* Loading indicator and cancel button */}
           {isRunning && (
-            <div className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900/60 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                <div>
-                  <p className="text-sm font-medium text-gray-300">
-                    Benchmark running...
-                  </p>
-                  {jobId && (
-                    <p className="text-xs text-gray-500 font-mono mt-0.5">
-                      Job ID: {jobId}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900/60 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-300">
+                      Benchmark running...
                     </p>
-                  )}
+                    {jobId && (
+                      <p className="text-xs text-gray-500 font-mono mt-0.5">
+                        Job ID: {jobId}
+                      </p>
+                    )}
+                  </div>
                 </div>
+                <button
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                  className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <X className="h-4 w-4" />
+                  {isCancelling ? "Cancelling..." : "Cancel Execution"}
+                </button>
               </div>
-              <button
-                onClick={handleCancel}
-                disabled={isCancelling}
-                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <X className="h-4 w-4" />
-                {isCancelling ? "Cancelling..." : "Cancel Execution"}
-              </button>
+
+              {/* Active config display */}
+              {currentConfig && (
+                <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Settings2 className="h-4 w-4 text-gray-400" />
+                    <span className="text-xs font-medium uppercase text-gray-400">Run Configuration</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-gray-500">Experiments:</span>{" "}
+                      <span className="text-gray-300">{currentConfig.experiments.join(", ")}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">N:</span>{" "}
+                      <span className="text-gray-300 font-mono">{currentConfig.n}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Seed:</span>{" "}
+                      <span className="text-gray-300 font-mono">{currentConfig.seed}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Perf:</span>{" "}
+                      <span className="text-gray-300">
+                        {currentConfig.no_perf ? "disabled" : `${currentConfig.perf_rounds} rounds`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Live log stream */}
+              {logLines.length > 0 && (
+                <LogStream lines={logLines} status="running" />
+              )}
             </div>
           )}
         </div>
@@ -135,9 +177,12 @@ export default function RunBenchmarks() {
           </p>
         )}
         {status === "failed" && (
-          <p className="text-red-400 text-sm">
-            Benchmark failed. Check Job History and open logs for details.
-          </p>
+          <div className="space-y-2">
+            <p className="text-red-400 text-sm">
+              Benchmark failed. Check the logs below for details.
+            </p>
+            {logLines.length > 0 && <LogStream lines={logLines} status="failed" />}
+          </div>
         )}
         {status === "closed" && (
           <p className="text-yellow-400 text-sm">

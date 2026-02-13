@@ -18,9 +18,34 @@ export interface WorstCase {
 
 export interface PerformanceData {
   per_op_ns: number | null;
+  per_op_ns_mean: number | null;
+  per_op_ns_median: number | null;
+  per_op_ns_std_dev: number | null;
+  per_op_ns_min: number | null;
+  per_op_ns_max: number | null;
+  per_op_ns_ci95: [number, number] | null;
+  per_op_ns_cv_pct: number | null;
   throughput_ops_s: number | null;
   total_ns: number | null;
+  total_ns_median: number | null;
   batch_size: number | null;
+  rounds: number | null;
+  samples: number[] | null;
+  warnings: string[] | null;
+}
+
+export interface ExperimentDescription {
+  title?: string;
+  what?: string;
+  why?: string;
+  units?: string;
+  interpret?: string;
+}
+
+export interface BenchmarkConfig {
+  perf_rounds?: number;
+  perf_warmup?: number;
+  perf_enabled?: boolean;
 }
 
 export interface AlignmentChecklist {
@@ -41,8 +66,12 @@ export interface AlignmentChecklist {
 export interface RunMetadata {
   date: string | null;
   git_shas: Record<string, string>;
+  git_branch: string | null;
   cpu: string | null;
+  cpu_model: string | null;
+  cpu_count: number | null;
   os: string | null;
+  platform_detail: string | null;
   toolchain: Record<string, string>;
 }
 
@@ -50,11 +79,13 @@ export interface ExperimentResult {
   experiment: string;
   candidate_library: string;
   reference_library: string;
+  description: ExperimentDescription | Record<string, unknown>;
   alignment: AlignmentChecklist | null;
   inputs: Record<string, unknown>;
   accuracy: Record<string, unknown>;
   performance: PerformanceData | Record<string, unknown>;
   reference_performance: PerformanceData | Record<string, unknown>;
+  benchmark_config: BenchmarkConfig | Record<string, unknown>;
   run_metadata: RunMetadata | null;
 }
 
@@ -100,6 +131,8 @@ export interface BenchmarkRequest {
   n: number;
   seed: number;
   no_perf: boolean;
+  perf_rounds: number;
+  ci_mode: boolean;
   notes: string;
 }
 
@@ -109,6 +142,10 @@ export interface BenchmarkStatus {
   started_at: string | null;
   finished_at: string | null;
   run_id: string | null;
+  config: BenchmarkRequest | null;
+  current_experiment: string | null;
+  current_step: string | null;
+  progress_pct: number | null;
 }
 
 /** Consistent color mapping for libraries. */
