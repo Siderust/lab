@@ -85,6 +85,47 @@ class BenchmarkRunner:
     def _log_file_path(self, job_id: str) -> Path:
         return self._logs_dir / f"{job_id}.log"
 
+    def _append_log(self, job_id: str, line: str) -> None:
+        """Append one line to in-memory and on-disk logs, then fan out to subscribers."""
+        self._log_buffers.setdefault(job_id, []).append(line)
+        log_file = self._log_file_path(job_id)
+        with open(log_file, "a") as fh:
+            fh.write(line + "\n")
+        for q in self._subscribers.get(job_id, []):
+            try:
+                q.put_nowait(line)
+            except asyncio.QueueFull:
+                pass
+
+    async def _rebuild_siderust_adapter(self, job_id: str) -> bool:
+        """Build siderust adapter so benchmark jobs always use current local code."""
+        manifest = self.lab_root / "pipeline" / "adapters" / "siderust_adapter" / "Cargo.toml"
+        cmd = ["cargo", "build", "--release", "--manifest-path", str(manifest)]
+        self._append_log(job_id, "Rebuilding siderust adapter (cargo build --release)...")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(self.lab_root),
+            )
+        except FileNotFoundError:
+            self._append_log(job_id, "ERROR: cargo not found on PATH; cannot build siderust adapter.")
+            return False
+
+        assert proc.stdout is not None
+        async for raw_line in proc.stdout:
+            line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
+            self._append_log(job_id, line)
+
+        rc = await proc.wait()
+        if rc != 0:
+            self._append_log(job_id, f"ERROR: siderust adapter build failed with exit code {rc}.")
+            return False
+
+        self._append_log(job_id, "Siderust adapter build complete.")
+        return True
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -127,6 +168,20 @@ class BenchmarkRunner:
         # Persist initial status
         self._persist_job(job_id)
 
+        build_ok = await self._rebuild_siderust_adapter(job_id)
+        if not build_ok:
+            status.status = "failed"
+            status.finished_at = datetime.now(timezone.utc).isoformat()
+            self._active_job = None
+            self._finished.add(job_id)
+            self._persist_job(job_id)
+            for q in self._subscribers.get(job_id, []):
+                try:
+                    q.put_nowait("__EOF__")
+                except asyncio.QueueFull:
+                    pass
+            return status
+
         # Build command — use lab venv python, not bare python3
         python = self._python_executable()
         cmd = [python, str(self.orchestrator)]
@@ -136,6 +191,7 @@ class BenchmarkRunner:
         cmd.extend(["--experiments", exps])
         cmd.extend(["--n", str(request.n)])
         cmd.extend(["--seed", str(request.seed)])
+        cmd.append("--no-build")
         if request.no_perf:
             cmd.append("--no-perf")
 
@@ -230,9 +286,8 @@ class BenchmarkRunner:
         self, job_id: str, proc: asyncio.subprocess.Process
     ) -> None:
         """Read subprocess stdout line by line and dispatch to subscribers."""
-        log_file = self._log_file_path(job_id)
         try:
-            with open(log_file, "w") as fh:
+            with open(self._log_file_path(job_id), "a") as fh:
                 assert proc.stdout is not None
                 async for raw_line in proc.stdout:
                     line = raw_line.decode("utf-8", errors="replace").rstrip("\n")

@@ -45,6 +45,25 @@ LIBNOVA_BIN = LAB_ROOT / "pipeline" / "adapters" / "libnova_adapter" / "build" /
 RAD_TO_MAS = 180.0 / math.pi * 3600.0 * 1000.0  # radians → milli-arcseconds
 RAD_TO_ARCSEC = 180.0 / math.pi * 3600.0
 
+
+def ensure_siderust_adapter_built() -> None:
+    """Build siderust adapter so runs use current local siderust sources."""
+    manifest = LAB_ROOT / "pipeline" / "adapters" / "siderust_adapter" / "Cargo.toml"
+    cmd = ["cargo", "build", "--release", "--manifest-path", str(manifest)]
+    print("Ensuring siderust adapter is up to date...")
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=str(LAB_ROOT),
+    )
+    if result.returncode != 0:
+        print("✗ Failed to build siderust adapter.", file=sys.stderr)
+        if result.stderr:
+            print(result.stderr[-1000:], file=sys.stderr)
+        raise SystemExit(2)
+    print("✓ Siderust adapter build complete.")
+
 # ---------------------------------------------------------------------------
 # Input generation
 # ---------------------------------------------------------------------------
@@ -1718,7 +1737,12 @@ def main():
                         help="Random seed for input generation")
     parser.add_argument("--no-perf", action="store_true",
                         help="Skip performance tests")
+    parser.add_argument("--no-build", action="store_true",
+                        help="Skip automatic rebuild of siderust adapter")
     args = parser.parse_args()
+
+    if not args.no_build:
+        ensure_siderust_adapter_built()
 
     # Resolve which experiments to run (--experiments takes precedence)
     raw = args.experiments or args.experiment or "all"

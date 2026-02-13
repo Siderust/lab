@@ -27,10 +27,26 @@ fi
 log()  { echo -e "${GREEN}▸${RESET} $*"; }
 warn() { echo -e "${YELLOW}⚠${RESET} $*"; }
 
+# ---- Submodules ----
+init_submodules_if_needed() {
+    if [ "${FORCE_SUBMODULE_SYNC:-0}" = "1" ]; then
+        warn "FORCE_SUBMODULE_SYNC=1 set: syncing submodules to pinned commits."
+        git submodule update --init --recursive
+        return
+    fi
+
+    if git submodule status --recursive | grep -q '^-'; then
+        log "Initializing missing git submodules..."
+        git submodule update --init --recursive
+    else
+        warn "Submodules already initialized; skipping sync to preserve local checkouts."
+        warn "Set FORCE_SUBMODULE_SYNC=1 to reset submodules to pinned commits."
+    fi
+}
+
 # ---- Build ----
 build_all() {
-    log "Initializing git submodules..."
-    git submodule update --init --recursive
+    init_submodules_if_needed
 
     log "Building ERFA adapter (C)..."
     make -C pipeline/adapters/erfa_adapter -j"$(nproc)" 2>&1 | tail -3
