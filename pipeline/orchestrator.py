@@ -27,6 +27,8 @@ import platform
 import subprocess
 import sys
 import hashlib
+import time
+import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +46,111 @@ LIBNOVA_BIN = LAB_ROOT / "pipeline" / "adapters" / "libnova_adapter" / "build" /
 
 RAD_TO_MAS = 180.0 / math.pi * 3600.0 * 1000.0  # radians → milli-arcseconds
 RAD_TO_ARCSEC = 180.0 / math.pi * 3600.0
+
+# Performance benchmarking defaults
+DEFAULT_PERF_ROUNDS = 5         # Number of separate timing rounds
+DEFAULT_PERF_WARMUP = 200       # Warmup iterations before each round
+MIN_MEASURABLE_NS = 10.0        # Warn if per-op time is below this threshold
+
+# ---------------------------------------------------------------------------
+# Experiment descriptions (for non-expert users)
+# ---------------------------------------------------------------------------
+EXPERIMENT_DESCRIPTIONS = {
+    "frame_rotation_bpn": {
+        "title": "Frame Rotation (Bias-Precession-Nutation)",
+        "what": "Rotates a direction vector from the ICRS celestial reference frame to the "
+                "True-of-Date frame using the Bias-Precession-Nutation (BPN) matrix.",
+        "why": "This is the fundamental coordinate transformation used in astrometry. "
+               "Differences indicate how well each library models Earth's axis wobble.",
+        "units": "Angular error in milli-arcseconds (mas). 1 mas = 1/3,600,000 of a degree.",
+        "interpret": "Lower error = closer to ERFA's IAU 2006/2000A model. Siderust uses "
+                     "simpler Meeus precession + IAU 1980 nutation, so some offset is expected.",
+    },
+    "gmst_era": {
+        "title": "Greenwich Mean Sidereal Time & Earth Rotation Angle",
+        "what": "Computes GMST (how far the Earth has rotated relative to the stars) and ERA "
+                "(the raw rotation angle) at given epochs.",
+        "why": "Time-scale conversions underpin all ground-based astronomical observations. "
+               "Small errors here compound in coordinate transforms.",
+        "units": "GMST error in arcseconds; ERA error in radians.",
+        "interpret": "Lower error = better agreement with ERFA's IAU 2006 polynomial. "
+                     "Libnova uses Meeus formula which differs at the arcsecond level.",
+    },
+    "equ_ecl": {
+        "title": "Equatorial to Ecliptic Coordinate Transform",
+        "what": "Converts sky positions from RA/Dec (equatorial) to ecliptic longitude/latitude, "
+                "using the obliquity of the ecliptic.",
+        "why": "Ecliptic coordinates are natural for solar system objects. The transform "
+               "depends on the obliquity model used.",
+        "units": "Angular separation in arcseconds between reference and candidate ecliptic positions.",
+        "interpret": "Lower separation = better agreement with ERFA's IAU 2006 obliquity model.",
+    },
+    "equ_horizontal": {
+        "title": "Equatorial to Horizontal (Alt-Az) Transform",
+        "what": "Converts celestial RA/Dec to local azimuth/altitude for a ground observer, "
+                "using sidereal time and spherical trigonometry.",
+        "why": "This is the 'where do I point my telescope?' calculation. Accuracy depends "
+               "on the GAST (sidereal time) model used.",
+        "units": "Angular separation in arcseconds between reference and candidate az/alt positions.",
+        "interpret": "Lower separation = better. Differences mainly arise from GAST model choice.",
+    },
+    "solar_position": {
+        "title": "Sun Geocentric Position",
+        "what": "Computes the apparent geocentric RA/Dec of the Sun at given epochs using "
+                "VSOP87 planetary theory.",
+        "why": "Sun position is needed for solar observations, shadow calculations, and "
+               "as input to other transforms.",
+        "units": "Angular separation in arcseconds between reference and candidate Sun positions.",
+        "interpret": "ERFA uses direct VSOP87 via epv00. Siderust uses its own VSOP87 "
+                     "implementation with aberration+FK5 corrections.",
+    },
+    "lunar_position": {
+        "title": "Moon Geocentric Position",
+        "what": "Computes geocentric RA/Dec of the Moon. Note: ERFA/Astropy use simplified "
+                "Meeus (~10 arcmin accuracy) while Siderust/libnova use full ELP 2000.",
+        "why": "Moon position accuracy varies significantly between libraries because no "
+               "standard 'reference' implementation exists in ERFA.",
+        "units": "Angular separation in arcseconds. Expect ~arcminute differences due to model gap.",
+        "interpret": "Large differences (arcminutes) reflect different ephemeris models, not bugs. "
+                     "Cross-library comparison is more meaningful than ERFA-as-truth here.",
+    },
+    "kepler_solver": {
+        "title": "Kepler Equation Solver (M → E → ν)",
+        "what": "Solves Kepler's equation M = E - e·sin(E) for the eccentric anomaly E, "
+                "then computes the true anomaly ν. Tests convergence across eccentricities.",
+        "why": "Kepler's equation is fundamental to orbital mechanics. Different solvers "
+               "(Newton-Raphson vs bisection) have different convergence properties.",
+        "units": "E and ν errors in radians. Self-consistency residual in radians.",
+        "interpret": "Lower residual = better convergence. Libnova's bisection method converges "
+                     "to ~1e-6 deg, while Newton-Raphson methods reach ~1e-15 rad.",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Progress tracking
+# ---------------------------------------------------------------------------
+
+def progress(msg: str, experiment: str = "", step: str = "", total_steps: int = 0, current_step: int = 0):
+    """Print a structured progress message that the web app can parse.
+    
+    Format: [PROGRESS] experiment=<name> step=<step> current=<n> total=<m> | <message>
+    """
+    parts = ["[PROGRESS]"]
+    if experiment:
+        parts.append(f"experiment={experiment}")
+    if step:
+        parts.append(f"step={step}")
+    if total_steps > 0:
+        parts.append(f"current={current_step}")
+        parts.append(f"total={total_steps}")
+    parts.append(f"| {msg}")
+    print(" ".join(parts), flush=True)
+
+
+def dataset_fingerprint(data: dict) -> str:
+    """Compute a SHA-256 fingerprint of the input dataset for reproducibility."""
+    canonical = json.dumps(data, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
 def ensure_siderust_adapter_built() -> None:
@@ -337,6 +444,76 @@ def format_gmst_input(jd_ut1, jd_tt):
     for u, t in zip(jd_ut1, jd_tt):
         lines.append(f"{u:.15f} {t:.15f}")
     return "\n".join(lines) + "\n"
+
+
+def run_multi_sample_perf(cmd, input_text: str, label: str,
+                          rounds: int = DEFAULT_PERF_ROUNDS) -> dict | None:
+    """Run performance adapter multiple rounds, compute statistical summary.
+
+    Returns a dict with per_op_ns stats: mean, median, std_dev, min, max, ci95, samples.
+    """
+    samples_per_op = []
+    samples_total = []
+
+    for r in range(rounds):
+        result = run_adapter(cmd, input_text, f"{label}_round{r}")
+        if result is None:
+            return None
+
+        per_op = result.get("per_op_ns")
+        total = result.get("total_ns")
+        count = result.get("count", 0)
+
+        if per_op is not None:
+            samples_per_op.append(per_op)
+        if total is not None:
+            samples_total.append(total)
+
+    if not samples_per_op:
+        return None
+
+    mean_ns = statistics.mean(samples_per_op)
+    median_ns = statistics.median(samples_per_op)
+    std_dev = statistics.stdev(samples_per_op) if len(samples_per_op) > 1 else 0.0
+    min_ns = min(samples_per_op)
+    max_ns = max(samples_per_op)
+
+    # 95% confidence interval (assumes normal distribution)
+    n = len(samples_per_op)
+    ci95_half = 1.96 * std_dev / math.sqrt(n) if n > 1 else 0.0
+
+    # Coefficient of variation (stability indicator)
+    cv = (std_dev / mean_ns * 100) if mean_ns > 0 else 0.0
+
+    # "Too fast to measure" warning
+    warnings = []
+    if median_ns < MIN_MEASURABLE_NS:
+        warnings.append(
+            f"Per-op time ({median_ns:.1f} ns) is below measurable threshold "
+            f"({MIN_MEASURABLE_NS} ns). Results may be dominated by measurement overhead."
+        )
+    if cv > 20:
+        warnings.append(
+            f"High coefficient of variation ({cv:.1f}%). Results are unstable. "
+            "Consider increasing sample count or reducing system load."
+        )
+
+    return {
+        "per_op_ns": median_ns,  # Use median as primary (robust to outliers)
+        "per_op_ns_mean": mean_ns,
+        "per_op_ns_median": median_ns,
+        "per_op_ns_std_dev": std_dev,
+        "per_op_ns_min": min_ns,
+        "per_op_ns_max": max_ns,
+        "per_op_ns_ci95": [mean_ns - ci95_half, mean_ns + ci95_half],
+        "per_op_ns_cv_pct": cv,
+        "throughput_ops_s": 1e9 / median_ns if median_ns > 0 else 0,
+        "total_ns_median": statistics.median(samples_total) if samples_total else None,
+        "batch_size": result.get("count"),
+        "rounds": rounds,
+        "samples": samples_per_op,
+        "warnings": warnings,
+    }
 
 
 def format_bpn_perf_input(epochs, directions):
@@ -847,10 +1024,14 @@ def run_metadata():
             "erfa": get_git_sha(LAB_ROOT / "erfa"),
             "libnova": get_git_sha(LAB_ROOT / "libnova"),
         },
+        "git_branch": _get_git_branch(LAB_ROOT),
         "cpu": platform.processor() or platform.machine(),
+        "cpu_count": os.cpu_count(),
         "os": f"{platform.system()} {platform.release()}",
+        "platform_detail": platform.platform(),
         "toolchain": {
             "python": platform.python_version(),
+            "numpy": np.__version__,
         },
     }
 
@@ -863,7 +1044,36 @@ def run_metadata():
         except Exception:
             pass
 
+    # Try to get CPU frequency info
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if "model name" in line:
+                    meta["cpu_model"] = line.split(":")[1].strip()
+                    break
+    except Exception:
+        pass
+
+    # Try to get pyerfa version
+    try:
+        import erfa
+        meta["toolchain"]["pyerfa"] = erfa.__version__
+    except Exception:
+        pass
+
     return meta
+
+
+def _get_git_branch(repo_path: Path) -> str:
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(repo_path),
+            capture_output=True, text=True, timeout=5,
+        )
+        return r.stdout.strip() if r.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -1032,651 +1242,320 @@ def generate_summary_table(all_results: list) -> str:
 # Main experiment runners
 # ---------------------------------------------------------------------------
 
-def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True):
+def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
+                                      perf_rounds: int = DEFAULT_PERF_ROUNDS):
     """
     Run the frame_rotation_bpn experiment end-to-end.
 
     Reference: ERFA (IAU 2006/2000A BPN matrix)
     Candidates: Siderust, Astropy, libnova
     """
-    print(f"\n{'='*70}")
-    print(f" Experiment: frame_rotation_bpn (N={n}, seed={seed})")
-    print(f"{'='*70}")
+    exp_name = "frame_rotation_bpn"
+    total_steps = 6 + (8 if run_perf else 0)  # gen + 4 adapters + accuracy + perf
+    step = 0
+
+    progress(f"Starting experiment (N={n}, seed={seed})", exp_name, "start", total_steps, step)
 
     # 1) Generate inputs
-    print("  Generating inputs...")
+    step += 1
+    progress("Generating inputs...", exp_name, "generate_inputs", total_steps, step)
     epochs, directions, labels = generate_frame_rotation_inputs(n, seed)
     input_text = format_bpn_input(epochs, directions)
 
+    # Compute dataset fingerprint for reproducibility
+    ds_fingerprint = dataset_fingerprint({
+        "experiment": exp_name, "n": n, "seed": seed,
+        "epochs_hash": hashlib.sha256(epochs.tobytes()).hexdigest()[:12],
+    })
+
     # 2) Run adapters
     adapters = {}
+    adapter_list = [
+        ("erfa", [str(ERFA_BIN)], "reference"),
+        ("siderust", [str(SIDERUST_BIN)], "candidate"),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "candidate"),
+        ("libnova", [str(LIBNOVA_BIN)], "candidate"),
+    ]
 
-    print("  Running ERFA adapter (reference)...")
-    adapters["erfa"] = run_adapter([str(ERFA_BIN)], input_text, "erfa")
-
-    print("  Running Siderust adapter...")
-    adapters["siderust"] = run_adapter([str(SIDERUST_BIN)], input_text, "siderust")
-
-    print("  Running Astropy adapter...")
-    adapters["astropy"] = run_adapter(
-        [sys.executable, str(ASTROPY_SCRIPT)], input_text, "astropy"
-    )
-
-    print("  Running libnova adapter...")
-    adapters["libnova"] = run_adapter([str(LIBNOVA_BIN)], input_text, "libnova")
+    for lib, cmd, role in adapter_list:
+        step += 1
+        progress(f"Running {lib} adapter ({role})...", exp_name, f"adapter_{lib}", total_steps, step)
+        adapters[lib] = run_adapter(cmd, input_text, lib)
 
     # 3) Compute accuracy metrics
+    step += 1
+    progress("Computing accuracy metrics...", exp_name, "accuracy", total_steps, step)
     results = []
     ref_data = adapters.get("erfa")
     if ref_data is None:
-        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
+        progress("ERFA adapter failed — cannot compute accuracy.", exp_name, "error")
         return results
 
+    meta = run_metadata()
     for lib in ["siderust", "astropy", "libnova"]:
         cand_data = adapters.get(lib)
         if cand_data is None:
             continue
 
-        print(f"  Computing accuracy: {lib} vs erfa...")
         accuracy = compute_accuracy_metrics(
             ref_data["cases"], cand_data["cases"], "erfa", lib
         )
 
         result = {
-            "experiment": "frame_rotation_bpn",
+            "experiment": exp_name,
             "candidate_library": lib,
             "reference_library": "erfa",
-            "alignment": alignment_checklist("frame_rotation_bpn"),
-            "inputs": {"count": n, "seed": seed,
-                       "epoch_range": [f"JD {min(epochs):.1f}", f"JD {max(epochs):.1f}"]},
+            "description": EXPERIMENT_DESCRIPTIONS.get(exp_name, {}),
+            "alignment": alignment_checklist(exp_name),
+            "inputs": {
+                "count": n, "seed": seed,
+                "epoch_range": [f"JD {min(epochs):.1f}", f"JD {max(epochs):.1f}"],
+                "dataset_fingerprint": ds_fingerprint,
+            },
             "accuracy": accuracy,
             "performance": {},
-            "run_metadata": run_metadata(),
+            "reference_performance": {},
+            "benchmark_config": {
+                "perf_rounds": perf_rounds if run_perf else 0,
+                "perf_warmup": DEFAULT_PERF_WARMUP,
+                "perf_enabled": run_perf,
+            },
+            "run_metadata": meta,
         }
         results.append(result)
 
-    # 4) Performance measurement
+    # 4) Performance measurement (multi-sample)
     if run_perf:
         perf_n = min(n, 10000)
-        print(f"  Running performance tests (N={perf_n})...")
+        progress(f"Running performance tests (N={perf_n}, {perf_rounds} rounds)...",
+                 exp_name, "performance", total_steps, step + 1)
         perf_input = format_bpn_perf_input(epochs[:perf_n], directions[:perf_n])
 
         for lib, cmd in [
-            ("erfa", [str(ERFA_BIN)]),
             ("siderust", [str(SIDERUST_BIN)]),
             ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
             ("libnova", [str(LIBNOVA_BIN)]),
         ]:
-            print(f"    Timing {lib}...")
-            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            step += 1
+            progress(f"Timing {lib} ({perf_rounds} rounds)...", exp_name, f"perf_{lib}", total_steps, step)
+            perf_data = run_multi_sample_perf(cmd, perf_input, f"{lib}_perf", rounds=perf_rounds)
             if perf_data:
-                # Find or create the result entry for this library
                 for r in results:
                     if r["candidate_library"] == lib:
-                        r["performance"] = {
-                            "per_op_ns": perf_data.get("per_op_ns"),
-                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
-                            "total_ns": perf_data.get("total_ns"),
-                            "batch_size": perf_data.get("count"),
-                        }
+                        r["performance"] = perf_data
 
-        # Also time the reference (erfa) by itself
-        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        # Time the reference (erfa) with multi-sample
+        step += 1
+        progress(f"Timing erfa reference ({perf_rounds} rounds)...", exp_name, "perf_erfa", total_steps, step)
+        perf_erfa = run_multi_sample_perf([str(ERFA_BIN)], perf_input, "erfa_perf", rounds=perf_rounds)
         if perf_erfa:
             for r in results:
-                r["reference_performance"] = {
-                    "per_op_ns": perf_erfa.get("per_op_ns"),
-                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
-                }
+                r["reference_performance"] = perf_erfa
 
+    progress("Experiment complete.", exp_name, "done", total_steps, total_steps)
     return results
 
 
-def run_experiment_gmst_era(n: int, seed: int, run_perf: bool = True):
-    """
-    Run the gmst_era experiment end-to-end.
+def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = True,
+                             perf_rounds: int = DEFAULT_PERF_ROUNDS,
+                             input_gen_fn=None, input_fmt_fn=None, perf_fmt_fn=None,
+                             accuracy_fn=None, accuracy_kwargs=None):
+    """Generic experiment runner with progress tracking, multi-sample perf, and metadata.
 
-    Reference: ERFA (IAU 2006 GMST, IAU 2000 ERA)
-    Candidates: Siderust, Astropy, libnova
+    This consolidates the common pattern shared by all experiments.
     """
-    print(f"\n{'='*70}")
-    print(f" Experiment: gmst_era (N={n}, seed={seed})")
-    print(f"{'='*70}")
+    if accuracy_kwargs is None:
+        accuracy_kwargs = {}
+
+    total_steps = 6 + (5 if run_perf else 0)
+    step = 0
+
+    progress(f"Starting experiment (N={n}, seed={seed})", exp_name, "start", total_steps, step)
 
     # 1) Generate inputs
-    print("  Generating inputs...")
-    jd_ut1, jd_tt = generate_gmst_era_inputs(n, seed)
-    input_text = format_gmst_input(jd_ut1, jd_tt)
+    step += 1
+    progress("Generating inputs...", exp_name, "generate_inputs", total_steps, step)
+    inputs = input_gen_fn(n, seed)
+    input_text = input_fmt_fn(*inputs) if not isinstance(inputs, str) else inputs
+
+    # Dataset fingerprint
+    ds_fp_data = {"experiment": exp_name, "n": n, "seed": seed}
+    if isinstance(inputs, tuple) and len(inputs) > 0:
+        for i, inp in enumerate(inputs):
+            if isinstance(inp, np.ndarray):
+                ds_fp_data[f"input_{i}_hash"] = hashlib.sha256(inp.tobytes()).hexdigest()[:12]
+    ds_fingerprint = dataset_fingerprint(ds_fp_data)
 
     # 2) Run adapters
     adapters = {}
+    adapter_list = [
+        ("erfa", [str(ERFA_BIN)]),
+        ("siderust", [str(SIDERUST_BIN)]),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+        ("libnova", [str(LIBNOVA_BIN)]),
+    ]
 
-    print("  Running ERFA adapter (reference)...")
-    adapters["erfa"] = run_adapter([str(ERFA_BIN)], input_text, "erfa")
-
-    print("  Running Siderust adapter...")
-    adapters["siderust"] = run_adapter([str(SIDERUST_BIN)], input_text, "siderust")
-
-    print("  Running Astropy adapter...")
-    adapters["astropy"] = run_adapter(
-        [sys.executable, str(ASTROPY_SCRIPT)], input_text, "astropy"
-    )
-
-    print("  Running libnova adapter...")
-    adapters["libnova"] = run_adapter([str(LIBNOVA_BIN)], input_text, "libnova")
+    for lib, cmd in adapter_list:
+        step += 1
+        role = "reference" if lib == "erfa" else "candidate"
+        progress(f"Running {lib} adapter ({role})...", exp_name, f"adapter_{lib}", total_steps, step)
+        adapters[lib] = run_adapter(cmd, input_text, lib)
 
     # 3) Compute accuracy
+    step += 1
+    progress("Computing accuracy metrics...", exp_name, "accuracy", total_steps, step)
     results = []
     ref_data = adapters.get("erfa")
     if ref_data is None:
-        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
+        progress("ERFA adapter failed — cannot compute accuracy.", exp_name, "error")
         return results
 
+    meta = run_metadata()
     for lib in ["siderust", "astropy", "libnova"]:
         cand_data = adapters.get(lib)
         if cand_data is None:
             continue
 
-        print(f"  Computing accuracy: {lib} vs erfa...")
-        accuracy = compute_gmst_accuracy(
-            ref_data["cases"], cand_data["cases"], "erfa", lib
-        )
+        accuracy = accuracy_fn(ref_data["cases"], cand_data["cases"], "erfa", lib, **accuracy_kwargs)
 
         result = {
-            "experiment": "gmst_era",
+            "experiment": exp_name,
             "candidate_library": lib,
             "reference_library": "erfa",
-            "alignment": alignment_checklist("gmst_era"),
-            "inputs": {"count": n, "seed": seed},
+            "description": EXPERIMENT_DESCRIPTIONS.get(exp_name, {}),
+            "alignment": alignment_checklist(exp_name),
+            "inputs": {
+                "count": n, "seed": seed,
+                "dataset_fingerprint": ds_fingerprint,
+            },
             "accuracy": accuracy,
             "performance": {},
-            "run_metadata": run_metadata(),
+            "reference_performance": {},
+            "benchmark_config": {
+                "perf_rounds": perf_rounds if run_perf else 0,
+                "perf_warmup": DEFAULT_PERF_WARMUP,
+                "perf_enabled": run_perf,
+            },
+            "run_metadata": meta,
         }
         results.append(result)
 
-    # 4) Performance measurement
-    if run_perf:
+    # 4) Performance measurement (multi-sample)
+    if run_perf and perf_fmt_fn is not None:
         perf_n = min(n, 10000)
-        print(f"  Running performance tests (N={perf_n})...")
-        perf_input = format_gmst_perf_input(jd_ut1[:perf_n], jd_tt[:perf_n])
+        progress(f"Running performance tests (N={perf_n}, {perf_rounds} rounds)...",
+                 exp_name, "performance", total_steps, step + 1)
+
+        # Generate perf input
+        perf_inputs = input_gen_fn(perf_n, seed)  # Regenerate for perf_n
+        perf_input = perf_fmt_fn(*perf_inputs) if not isinstance(perf_inputs, str) else perf_inputs
 
         for lib, cmd in [
-            ("erfa", [str(ERFA_BIN)]),
             ("siderust", [str(SIDERUST_BIN)]),
             ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
             ("libnova", [str(LIBNOVA_BIN)]),
         ]:
-            print(f"    Timing {lib}...")
-            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
+            step += 1
+            progress(f"Timing {lib} ({perf_rounds} rounds)...", exp_name, f"perf_{lib}", total_steps, step)
+            perf_data = run_multi_sample_perf(cmd, perf_input, f"{lib}_perf", rounds=perf_rounds)
             if perf_data:
                 for r in results:
                     if r["candidate_library"] == lib:
-                        r["performance"] = {
-                            "per_op_ns": perf_data.get("per_op_ns"),
-                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
-                            "total_ns": perf_data.get("total_ns"),
-                            "batch_size": perf_data.get("count"),
-                        }
+                        r["performance"] = perf_data
 
-        # Reference performance
-        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
+        step += 1
+        progress(f"Timing erfa reference ({perf_rounds} rounds)...", exp_name, "perf_erfa", total_steps, step)
+        perf_erfa = run_multi_sample_perf([str(ERFA_BIN)], perf_input, "erfa_perf", rounds=perf_rounds)
         if perf_erfa:
             for r in results:
-                r["reference_performance"] = {
-                    "per_op_ns": perf_erfa.get("per_op_ns"),
-                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
-                }
+                r["reference_performance"] = perf_erfa
 
+    progress("Experiment complete.", exp_name, "done", total_steps, total_steps)
     return results
 
 
-def run_experiment_equ_ecl(n: int, seed: int, run_perf: bool = True):
-    """
-    Run the equ_ecl experiment: equatorial ↔ ecliptic coordinate transform.
-
-    Reference: ERFA (IAU 2006 obliquity)
-    Candidates: Siderust, Astropy, libnova
-    """
-    print(f"\n{'='*70}")
-    print(f" Experiment: equ_ecl (N={n}, seed={seed})")
-    print(f"{'='*70}")
-
-    print("  Generating inputs...")
-    epochs, ra, dec = generate_equ_ecl_inputs(n, seed)
-    input_text = format_equ_ecl_input(epochs, ra, dec)
-
-    adapters = {}
-    for lib, cmd, label in [
-        ("erfa", [str(ERFA_BIN)], "erfa"),
-        ("siderust", [str(SIDERUST_BIN)], "siderust"),
-        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
-        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
-    ]:
-        print(f"  Running {label} adapter...")
-        adapters[lib] = run_adapter(cmd, input_text, label)
-
-    results = []
-    ref_data = adapters.get("erfa")
-    if ref_data is None:
-        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
-        return results
-
-    for lib in ["siderust", "astropy", "libnova"]:
-        cand_data = adapters.get(lib)
-        if cand_data is None:
-            continue
-
-        print(f"  Computing accuracy: {lib} vs erfa...")
-        accuracy = compute_angular_accuracy(
-            ref_data["cases"], cand_data["cases"], "erfa", lib,
-            ra_key="ecl_lon_rad", dec_key="ecl_lat_rad",
-        )
-
-        results.append({
-            "experiment": "equ_ecl",
-            "candidate_library": lib,
-            "reference_library": "erfa",
-            "alignment": alignment_checklist("equ_ecl"),
-            "inputs": {"count": n, "seed": seed},
-            "accuracy": accuracy,
-            "performance": {},
-            "run_metadata": run_metadata(),
-        })
-
-    # 4) Performance measurement
-    if run_perf:
-        perf_n = min(n, 10000)
-        print(f"  Running performance tests (N={perf_n})...")
-        perf_input = format_equ_ecl_perf_input(epochs[:perf_n], ra[:perf_n], dec[:perf_n])
-
-        for lib, cmd in [
-            ("erfa", [str(ERFA_BIN)]),
-            ("siderust", [str(SIDERUST_BIN)]),
-            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-            ("libnova", [str(LIBNOVA_BIN)]),
-        ]:
-            print(f"    Timing {lib}...")
-            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
-            if perf_data:
-                for r in results:
-                    if r["candidate_library"] == lib:
-                        r["performance"] = {
-                            "per_op_ns": perf_data.get("per_op_ns"),
-                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
-                            "total_ns": perf_data.get("total_ns"),
-                            "batch_size": perf_data.get("count"),
-                        }
-
-        # Reference performance
-        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
-        if perf_erfa:
-            for r in results:
-                r["reference_performance"] = {
-                    "per_op_ns": perf_erfa.get("per_op_ns"),
-                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
-                }
-
-    return results
+def run_experiment_gmst_era(n: int, seed: int, run_perf: bool = True,
+                            perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the gmst_era experiment end-to-end."""
+    return _run_generic_experiment(
+        exp_name="gmst_era", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_gmst_era_inputs,
+        input_fmt_fn=format_gmst_input,
+        perf_fmt_fn=format_gmst_perf_input,
+        accuracy_fn=compute_gmst_accuracy,
+    )
 
 
-def run_experiment_equ_horizontal(n: int, seed: int, run_perf: bool = True):
-    """
-    Run the equ_horizontal experiment: equatorial → horizontal (AltAz).
-
-    Reference: ERFA (eraHd2ae + eraGst06a)
-    Candidates: Siderust, Astropy, libnova
-    """
-    print(f"\n{'='*70}")
-    print(f" Experiment: equ_horizontal (N={n}, seed={seed})")
-    print(f"{'='*70}")
-
-    print("  Generating inputs...")
-    jd_ut1, jd_tt, ra, dec, lon, lat = generate_equ_horizontal_inputs(n, seed)
-    input_text = format_equ_horizontal_input(jd_ut1, jd_tt, ra, dec, lon, lat)
-
-    adapters = {}
-    for lib, cmd, label in [
-        ("erfa", [str(ERFA_BIN)], "erfa"),
-        ("siderust", [str(SIDERUST_BIN)], "siderust"),
-        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
-        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
-    ]:
-        print(f"  Running {label} adapter...")
-        adapters[lib] = run_adapter(cmd, input_text, label)
-
-    results = []
-    ref_data = adapters.get("erfa")
-    if ref_data is None:
-        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
-        return results
-
-    for lib in ["siderust", "astropy", "libnova"]:
-        cand_data = adapters.get(lib)
-        if cand_data is None:
-            continue
-
-        print(f"  Computing accuracy: {lib} vs erfa...")
-        accuracy = compute_angular_accuracy(
-            ref_data["cases"], cand_data["cases"], "erfa", lib,
-            ra_key="az_rad", dec_key="alt_rad",
-        )
-
-        results.append({
-            "experiment": "equ_horizontal",
-            "candidate_library": lib,
-            "reference_library": "erfa",
-            "alignment": alignment_checklist("equ_horizontal"),
-            "inputs": {"count": n, "seed": seed},
-            "accuracy": accuracy,
-            "performance": {},
-            "run_metadata": run_metadata(),
-        })
-
-    # 4) Performance measurement
-    if run_perf:
-        perf_n = min(n, 10000)
-        print(f"  Running performance tests (N={perf_n})...")
-        perf_input = format_equ_horizontal_perf_input(
-            jd_ut1[:perf_n], jd_tt[:perf_n], ra[:perf_n], dec[:perf_n],
-            lon[:perf_n], lat[:perf_n]
-        )
-
-        for lib, cmd in [
-            ("erfa", [str(ERFA_BIN)]),
-            ("siderust", [str(SIDERUST_BIN)]),
-            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-            ("libnova", [str(LIBNOVA_BIN)]),
-        ]:
-            print(f"    Timing {lib}...")
-            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
-            if perf_data:
-                for r in results:
-                    if r["candidate_library"] == lib:
-                        r["performance"] = {
-                            "per_op_ns": perf_data.get("per_op_ns"),
-                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
-                            "total_ns": perf_data.get("total_ns"),
-                            "batch_size": perf_data.get("count"),
-                        }
-
-        # Reference performance
-        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
-        if perf_erfa:
-            for r in results:
-                r["reference_performance"] = {
-                    "per_op_ns": perf_erfa.get("per_op_ns"),
-                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
-                }
-
-    return results
+def run_experiment_equ_ecl(n: int, seed: int, run_perf: bool = True,
+                           perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the equ_ecl experiment: equatorial ↔ ecliptic coordinate transform."""
+    return _run_generic_experiment(
+        exp_name="equ_ecl", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_equ_ecl_inputs,
+        input_fmt_fn=format_equ_ecl_input,
+        perf_fmt_fn=format_equ_ecl_perf_input,
+        accuracy_fn=compute_angular_accuracy,
+        accuracy_kwargs={"ra_key": "ecl_lon_rad", "dec_key": "ecl_lat_rad"},
+    )
 
 
-def run_experiment_solar_position(n: int, seed: int, run_perf: bool = True):
-    """
-    Run the solar_position experiment: geocentric Sun RA/Dec.
-
-    Reference: ERFA (VSOP87 via epv00)
-    Candidates: Siderust, Astropy, libnova
-    """
-    print(f"\n{'='*70}")
-    print(f" Experiment: solar_position (N={n}, seed={seed})")
-    print(f"{'='*70}")
-
-    print("  Generating inputs...")
-    epochs = generate_solar_position_inputs(n, seed)
-    input_text = format_solar_position_input(epochs)
-
-    adapters = {}
-    for lib, cmd, label in [
-        ("erfa", [str(ERFA_BIN)], "erfa"),
-        ("siderust", [str(SIDERUST_BIN)], "siderust"),
-        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
-        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
-    ]:
-        print(f"  Running {label} adapter...")
-        adapters[lib] = run_adapter(cmd, input_text, label)
-
-    results = []
-    ref_data = adapters.get("erfa")
-    if ref_data is None:
-        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
-        return results
-
-    for lib in ["siderust", "astropy", "libnova"]:
-        cand_data = adapters.get(lib)
-        if cand_data is None:
-            continue
-
-        print(f"  Computing accuracy: {lib} vs erfa...")
-        accuracy = compute_angular_accuracy(
-            ref_data["cases"], cand_data["cases"], "erfa", lib,
-            ra_key="ra_rad", dec_key="dec_rad",
-            extra_keys=["dist_au"],
-        )
-
-        results.append({
-            "experiment": "solar_position",
-            "candidate_library": lib,
-            "reference_library": "erfa",
-            "alignment": alignment_checklist("solar_position"),
-            "inputs": {"count": n, "seed": seed},
-            "accuracy": accuracy,
-            "performance": {},
-            "run_metadata": run_metadata(),
-        })
-
-    # 4) Performance measurement
-    if run_perf:
-        perf_n = min(n, 10000)
-        print(f"  Running performance tests (N={perf_n})...")
-        perf_input = format_solar_position_perf_input(epochs[:perf_n])
-
-        for lib, cmd in [
-            ("erfa", [str(ERFA_BIN)]),
-            ("siderust", [str(SIDERUST_BIN)]),
-            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-            ("libnova", [str(LIBNOVA_BIN)]),
-        ]:
-            print(f"    Timing {lib}...")
-            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
-            if perf_data:
-                for r in results:
-                    if r["candidate_library"] == lib:
-                        r["performance"] = {
-                            "per_op_ns": perf_data.get("per_op_ns"),
-                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
-                            "total_ns": perf_data.get("total_ns"),
-                            "batch_size": perf_data.get("count"),
-                        }
-
-        # Reference performance
-        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
-        if perf_erfa:
-            for r in results:
-                r["reference_performance"] = {
-                    "per_op_ns": perf_erfa.get("per_op_ns"),
-                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
-                }
-
-    return results
+def run_experiment_equ_horizontal(n: int, seed: int, run_perf: bool = True,
+                                   perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the equ_horizontal experiment: equatorial → horizontal (AltAz)."""
+    return _run_generic_experiment(
+        exp_name="equ_horizontal", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_equ_horizontal_inputs,
+        input_fmt_fn=format_equ_horizontal_input,
+        perf_fmt_fn=format_equ_horizontal_perf_input,
+        accuracy_fn=compute_angular_accuracy,
+        accuracy_kwargs={"ra_key": "az_rad", "dec_key": "alt_rad"},
+    )
 
 
-def run_experiment_lunar_position(n: int, seed: int, run_perf: bool = True):
-    """
-    Run the lunar_position experiment: geocentric Moon RA/Dec.
+def run_experiment_solar_position(n: int, seed: int, run_perf: bool = True,
+                                   perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the solar_position experiment: geocentric Sun RA/Dec."""
+    def _solar_gen(n, seed):
+        epochs = generate_solar_position_inputs(n, seed)
+        return (epochs,)
 
-    Note: ERFA/Astropy use simplified Meeus (~10' accuracy).
-    Siderust/libnova use full ELP 2000. Cross-lib comparison is the metric.
-    """
-    print(f"\n{'='*70}")
-    print(f" Experiment: lunar_position (N={n}, seed={seed})")
-    print(f"{'='*70}")
-
-    print("  Generating inputs...")
-    epochs = generate_lunar_position_inputs(n, seed)
-    input_text = format_lunar_position_input(epochs)
-
-    adapters = {}
-    for lib, cmd, label in [
-        ("erfa", [str(ERFA_BIN)], "erfa"),
-        ("siderust", [str(SIDERUST_BIN)], "siderust"),
-        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
-        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
-    ]:
-        print(f"  Running {label} adapter...")
-        adapters[lib] = run_adapter(cmd, input_text, label)
-
-    # For Moon, use ERFA as reference but note it's simplified Meeus
-    results = []
-    ref_data = adapters.get("erfa")
-    if ref_data is None:
-        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
-        return results
-
-    for lib in ["siderust", "astropy", "libnova"]:
-        cand_data = adapters.get(lib)
-        if cand_data is None:
-            continue
-
-        print(f"  Computing accuracy: {lib} vs erfa...")
-        accuracy = compute_angular_accuracy(
-            ref_data["cases"], cand_data["cases"], "erfa", lib,
-            ra_key="ra_rad", dec_key="dec_rad",
-            extra_keys=["dist_km"],
-        )
-
-        results.append({
-            "experiment": "lunar_position",
-            "candidate_library": lib,
-            "reference_library": "erfa",
-            "alignment": alignment_checklist("lunar_position"),
-            "inputs": {"count": n, "seed": seed},
-            "accuracy": accuracy,
-            "performance": {},
-            "run_metadata": run_metadata(),
-        })
-
-    # 4) Performance measurement
-    if run_perf:
-        perf_n = min(n, 10000)
-        print(f"  Running performance tests (N={perf_n})...")
-        perf_input = format_lunar_position_perf_input(epochs[:perf_n])
-
-        for lib, cmd in [
-            ("erfa", [str(ERFA_BIN)]),
-            ("siderust", [str(SIDERUST_BIN)]),
-            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-            ("libnova", [str(LIBNOVA_BIN)]),
-        ]:
-            print(f"    Timing {lib}...")
-            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
-            if perf_data:
-                for r in results:
-                    if r["candidate_library"] == lib:
-                        r["performance"] = {
-                            "per_op_ns": perf_data.get("per_op_ns"),
-                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
-                            "total_ns": perf_data.get("total_ns"),
-                            "batch_size": perf_data.get("count"),
-                        }
-
-        # Reference performance
-        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
-        if perf_erfa:
-            for r in results:
-                r["reference_performance"] = {
-                    "per_op_ns": perf_erfa.get("per_op_ns"),
-                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
-                }
-
-    return results
+    return _run_generic_experiment(
+        exp_name="solar_position", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=_solar_gen,
+        input_fmt_fn=lambda epochs: format_solar_position_input(epochs),
+        perf_fmt_fn=lambda epochs: format_solar_position_perf_input(epochs),
+        accuracy_fn=compute_angular_accuracy,
+        accuracy_kwargs={"ra_key": "ra_rad", "dec_key": "dec_rad", "extra_keys": ["dist_au"]},
+    )
 
 
-def run_experiment_kepler_solver(n: int, seed: int, run_perf: bool = True):
-    """
-    Run the kepler_solver experiment: Kepler's equation M→E→ν.
+def run_experiment_lunar_position(n: int, seed: int, run_perf: bool = True,
+                                   perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the lunar_position experiment: geocentric Moon RA/Dec."""
+    def _lunar_gen(n, seed):
+        epochs = generate_lunar_position_inputs(n, seed)
+        return (epochs,)
 
-    All libraries compared against each other (ERFA as reference).
-    """
-    print(f"\n{'='*70}")
-    print(f" Experiment: kepler_solver (N={n}, seed={seed})")
-    print(f"{'='*70}")
+    return _run_generic_experiment(
+        exp_name="lunar_position", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=_lunar_gen,
+        input_fmt_fn=lambda epochs: format_lunar_position_input(epochs),
+        perf_fmt_fn=lambda epochs: format_lunar_position_perf_input(epochs),
+        accuracy_fn=compute_angular_accuracy,
+        accuracy_kwargs={"ra_key": "ra_rad", "dec_key": "dec_rad", "extra_keys": ["dist_km"]},
+    )
 
-    print("  Generating inputs...")
-    M_arr, e_arr = generate_kepler_inputs(n, seed)
-    input_text = format_kepler_input(M_arr, e_arr)
 
-    adapters = {}
-    for lib, cmd, label in [
-        ("erfa", [str(ERFA_BIN)], "erfa"),
-        ("siderust", [str(SIDERUST_BIN)], "siderust"),
-        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "astropy"),
-        ("libnova", [str(LIBNOVA_BIN)], "libnova"),
-    ]:
-        print(f"  Running {label} adapter...")
-        adapters[lib] = run_adapter(cmd, input_text, label)
-
-    results = []
-    ref_data = adapters.get("erfa")
-    if ref_data is None:
-        print("  ✗ ERFA adapter failed — cannot compute accuracy.", file=sys.stderr)
-        return results
-
-    for lib in ["siderust", "astropy", "libnova"]:
-        cand_data = adapters.get(lib)
-        if cand_data is None:
-            continue
-
-        print(f"  Computing accuracy: {lib} vs erfa...")
-        accuracy = compute_kepler_accuracy(
-            ref_data["cases"], cand_data["cases"], "erfa", lib,
-        )
-
-        results.append({
-            "experiment": "kepler_solver",
-            "candidate_library": lib,
-            "reference_library": "erfa",
-            "alignment": alignment_checklist("kepler_solver"),
-            "inputs": {"count": n, "seed": seed},
-            "accuracy": accuracy,
-            "performance": {},
-            "run_metadata": run_metadata(),
-        })
-
-    # 4) Performance measurement
-    if run_perf:
-        perf_n = min(n, 10000)
-        print(f"  Running performance tests (N={perf_n})...")
-        perf_input = format_kepler_perf_input(M_arr[:perf_n], e_arr[:perf_n])
-
-        for lib, cmd in [
-            ("erfa", [str(ERFA_BIN)]),
-            ("siderust", [str(SIDERUST_BIN)]),
-            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-            ("libnova", [str(LIBNOVA_BIN)]),
-        ]:
-            print(f"    Timing {lib}...")
-            perf_data = run_adapter(cmd, perf_input, f"{lib}_perf")
-            if perf_data:
-                for r in results:
-                    if r["candidate_library"] == lib:
-                        r["performance"] = {
-                            "per_op_ns": perf_data.get("per_op_ns"),
-                            "throughput_ops_s": perf_data.get("throughput_ops_s"),
-                            "total_ns": perf_data.get("total_ns"),
-                            "batch_size": perf_data.get("count"),
-                        }
-
-        # Reference performance
-        perf_erfa = run_adapter([str(ERFA_BIN)], perf_input, "erfa_perf")
-        if perf_erfa:
-            for r in results:
-                r["reference_performance"] = {
-                    "per_op_ns": perf_erfa.get("per_op_ns"),
-                    "throughput_ops_s": perf_erfa.get("throughput_ops_s"),
-                }
-
-    return results
+def run_experiment_kepler_solver(n: int, seed: int, run_perf: bool = True,
+                                  perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the kepler_solver experiment: Kepler's equation M→E→ν."""
+    return _run_generic_experiment(
+        exp_name="kepler_solver", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_kepler_inputs,
+        input_fmt_fn=format_kepler_input,
+        perf_fmt_fn=format_kepler_perf_input,
+        accuracy_fn=compute_kepler_accuracy,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1737,9 +1616,20 @@ def main():
                         help="Random seed for input generation")
     parser.add_argument("--no-perf", action="store_true",
                         help="Skip performance tests")
+    parser.add_argument("--perf-rounds", type=int, default=DEFAULT_PERF_ROUNDS,
+                        help=f"Number of performance timing rounds (default: {DEFAULT_PERF_ROUNDS})")
+    parser.add_argument("--ci", action="store_true",
+                        help="CI mode: fewer rounds, smaller N for faster execution")
     parser.add_argument("--no-build", action="store_true",
                         help="Skip automatic rebuild of siderust adapter")
     args = parser.parse_args()
+
+    # CI mode overrides
+    if args.ci:
+        if args.n == 1000:  # Only override if default
+            args.n = 100
+        if args.perf_rounds == DEFAULT_PERF_ROUNDS:
+            args.perf_rounds = 2
 
     if not args.no_build:
         ensure_siderust_adapter_built()
@@ -1754,39 +1644,56 @@ def main():
     # Generate single timestamp for this entire run
     run_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
 
+    # Print run configuration banner
+    run_perf = not args.no_perf
+    print(f"\n{'='*70}")
+    print(f" Siderust Lab — Benchmark Run")
+    print(f"{'='*70}")
+    print(f"  Timestamp:     {run_timestamp}")
+    print(f"  Experiments:   {', '.join(experiments_to_run)}")
+    print(f"  N (cases):     {args.n}")
+    print(f"  Seed:          {args.seed}")
+    print(f"  Performance:   {'enabled (' + str(args.perf_rounds) + ' rounds)' if run_perf else 'disabled'}")
+    print(f"  CI mode:       {'yes' if args.ci else 'no'}")
+    print(f"{'='*70}\n")
+
     all_results = []
 
     dispatch = {
         "frame_rotation_bpn": lambda: run_experiment_frame_rotation_bpn(
-            args.n, args.seed, run_perf=not args.no_perf
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
         "gmst_era": lambda: run_experiment_gmst_era(
-            args.n, args.seed, run_perf=not args.no_perf
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
         "equ_ecl": lambda: run_experiment_equ_ecl(
-            args.n, args.seed, run_perf=not args.no_perf
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
         "equ_horizontal": lambda: run_experiment_equ_horizontal(
-            args.n, args.seed, run_perf=not args.no_perf
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
         "solar_position": lambda: run_experiment_solar_position(
-            args.n, args.seed, run_perf=not args.no_perf
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
         "lunar_position": lambda: run_experiment_lunar_position(
-            args.n, args.seed, run_perf=not args.no_perf
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
         "kepler_solver": lambda: run_experiment_kepler_solver(
-            args.n, args.seed, run_perf=not args.no_perf
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
     }
 
-    for exp in experiments_to_run:
-        runner = dispatch.get(exp)
-        if runner is None:
+    total_experiments = len(experiments_to_run)
+    for exp_idx, exp in enumerate(experiments_to_run, 1):
+        progress(f"Experiment {exp_idx}/{total_experiments}: {exp}",
+                 step="experiment_start", current_step=exp_idx, total_steps=total_experiments)
+
+        runner_fn = dispatch.get(exp)
+        if runner_fn is None:
             print(f"Unknown experiment: {exp}", file=sys.stderr)
             continue
 
-        results = runner()
+        results = runner_fn()
 
         if results:
             write_results(results, exp, run_timestamp)
@@ -1823,7 +1730,14 @@ def main():
 
                 perf = r.get("performance", {})
                 if perf.get("per_op_ns"):
-                    print(f"    Performance: {perf['per_op_ns']:.0f} ns/op, {perf['throughput_ops_s']:.0f} ops/s")
+                    ns = perf["per_op_ns"]
+                    ops = perf.get("throughput_ops_s", 0)
+                    cv = perf.get("per_op_ns_cv_pct", 0)
+                    rounds = perf.get("rounds", 1)
+                    print(f"    Performance: {ns:.0f} ns/op (median, {rounds} rounds, CV={cv:.1f}%)")
+                    if perf.get("warnings"):
+                        for w in perf["warnings"]:
+                            print(f"    ⚠ {w}")
 
     if all_results:
         # Write combined summary
@@ -1832,6 +1746,27 @@ def main():
         print(" Combined Summary Table")
         print(f"{'='*70}")
         print(summary)
+
+        # Write run manifest
+        manifest = {
+            "run_id": run_timestamp,
+            "config": {
+                "experiments": experiments_to_run,
+                "n": args.n,
+                "seed": args.seed,
+                "perf_enabled": run_perf,
+                "perf_rounds": args.perf_rounds,
+                "ci_mode": args.ci,
+            },
+            "metadata": run_metadata(),
+            "experiment_count": len(set(r["experiment"] for r in all_results)),
+            "total_results": len(all_results),
+        }
+        manifest_path = RESULTS_DIR / run_timestamp / "manifest.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+        print(f"\n  ✓ Run manifest: {manifest_path.relative_to(LAB_ROOT)}")
 
 
 if __name__ == "__main__":
