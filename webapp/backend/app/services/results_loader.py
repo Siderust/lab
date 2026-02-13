@@ -13,8 +13,8 @@ from ..models.schemas import (
     RunSummary,
 )
 
-# Matches YYYY-MM-DD directory names
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Matches YYYY-MM-DD or YYYY-MM-DD_HH-MM-SS directory names
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:_\d{2}-\d{2}-\d{2})?$")
 
 
 class ResultsLoader:

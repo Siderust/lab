@@ -33,6 +33,73 @@ def ang_sep(a, b):
     dot = np.clip(np.dot(a, b), -1.0, 1.0)
     return math.acos(dot)
 
+def solve_kepler_newton(M_rad, e, max_iter=100, tol=1e-15):
+    """Solve M = E - e*sin(E) with a shared Newton setup for parity."""
+    E = M_rad
+    converged = True
+    iters = 0
+    for iters in range(max_iter):
+        f = E - e * math.sin(E) - M_rad
+        fp = 1.0 - e * math.cos(E)
+        if abs(fp) < 1e-30:
+            converged = False
+            break
+        dE = f / fp
+        E -= dE
+        if abs(dE) < tol:
+            break
+    else:
+        converged = False
+    return E, iters, converged
+
+def sun_ra_dec_dist_from_epv00(jd_tt, erfa_mod):
+    """Compute Sun geocentric RA/Dec/dist from ERFA epv00."""
+    date1, date2 = 2451545.0, jd_tt - 2451545.0
+    pvh, _pvb = erfa_mod.epv00(date1, date2)
+    sx, sy, sz = -pvh[0][0], -pvh[0][1], -pvh[0][2]
+    dist_au = math.sqrt(sx*sx + sy*sy + sz*sz)
+    ra = math.atan2(sy, sx) % (2 * math.pi)
+    dec = math.asin(sz / dist_au)
+    return ra, dec, dist_au
+
+def moon_ra_dec_dist_meeus(jd_tt):
+    """Moon geocentric RA/Dec via simplified Meeus Ch.47."""
+    T = (jd_tt - 2451545.0) / 36525.0
+
+    Lp = (218.3164477 + 481267.88123421*T - 0.0015786*T**2
+          + T**3/538841.0 - T**4/65194000.0) % 360.0
+    D  = (297.8501921 + 445267.1114034*T - 0.0018819*T**2
+          + T**3/545868.0 - T**4/113065000.0) % 360.0
+    M  = (357.5291092 + 35999.0502909*T - 0.0001536*T**2
+          + T**3/24490000.0) % 360.0
+    Mp = (134.9633964 + 477198.8675055*T + 0.0087414*T**2
+          + T**3/69699.0 - T**4/14712000.0) % 360.0
+    F  = (93.2720950 + 483202.0175233*T - 0.0036539*T**2
+          - T**3/3526000.0 + T**4/863310000.0) % 360.0
+
+    Lp_r, D_r, M_r, Mp_r, F_r = [x * math.pi / 180 for x in [Lp, D, M, Mp, F]]
+
+    sum_l = (6288774*math.sin(Mp_r) + 1274027*math.sin(2*D_r - Mp_r)
+            + 658314*math.sin(2*D_r) + 213618*math.sin(2*Mp_r)
+            - 185116*math.sin(M_r) - 114332*math.sin(2*F_r))
+
+    sum_b = (5128122*math.sin(F_r) + 280602*math.sin(Mp_r + F_r)
+            + 277693*math.sin(Mp_r - F_r) + 173237*math.sin(2*D_r - F_r))
+
+    sum_r = (-20905355*math.cos(Mp_r) - 3699111*math.cos(2*D_r - Mp_r)
+            - 2955968*math.cos(2*D_r) - 569925*math.cos(2*Mp_r))
+
+    ecl_lon = (Lp + sum_l / 1e6) * math.pi / 180
+    ecl_lat = (sum_b / 1e6) * math.pi / 180
+    dist_km = 385000.56 + sum_r / 1000.0
+
+    eps = (23.4392911 - 0.01300417*T - 1.638e-7*T**2) * math.pi / 180
+    ce, se = math.cos(eps), math.sin(eps)
+    ra = math.atan2(math.sin(ecl_lon)*ce - math.tan(ecl_lat)*se, math.cos(ecl_lon))
+    ra = ra % (2 * math.pi)
+    dec = math.asin(math.sin(ecl_lat)*ce + math.cos(ecl_lat)*se*math.sin(ecl_lon))
+    return ra, dec, dist_km
+
 def run_frame_rotation_bpn(lines_iter):
     """
     Compute the Bias-Precession-Nutation matrix using Astropy's ERFA bindings.
@@ -297,14 +364,7 @@ def run_solar_position(lines_iter):
     cases = []
     for i in range(n):
         jd_tt = float(next(lines_iter).strip())
-        date1, date2 = 2451545.0, jd_tt - 2451545.0
-
-        pvh, pvb = erfa.epv00(date1, date2)
-        # pvh[0] = heliocentric position (BCRS equatorial)
-        sx, sy, sz = -pvh[0][0], -pvh[0][1], -pvh[0][2]
-        dist_au = math.sqrt(sx*sx + sy*sy + sz*sz)
-        ra = math.atan2(sy, sx) % (2 * math.pi)
-        dec = math.asin(sz / dist_au)
+        ra, dec, dist_au = sun_ra_dec_dist_from_epv00(jd_tt, erfa)
 
         cases.append({
             "jd_tt": jd_tt,
@@ -330,40 +390,7 @@ def run_lunar_position(lines_iter):
     cases = []
     for i in range(n):
         jd_tt = float(next(lines_iter).strip())
-        T = (jd_tt - 2451545.0) / 36525.0
-
-        Lp = (218.3164477 + 481267.88123421*T - 0.0015786*T**2
-              + T**3/538841.0 - T**4/65194000.0) % 360.0
-        D  = (297.8501921 + 445267.1114034*T - 0.0018819*T**2
-              + T**3/545868.0 - T**4/113065000.0) % 360.0
-        M  = (357.5291092 + 35999.0502909*T - 0.0001536*T**2
-              + T**3/24490000.0) % 360.0
-        Mp = (134.9633964 + 477198.8675055*T + 0.0087414*T**2
-              + T**3/69699.0 - T**4/14712000.0) % 360.0
-        F  = (93.2720950 + 483202.0175233*T - 0.0036539*T**2
-              - T**3/3526000.0 + T**4/863310000.0) % 360.0
-
-        Lp_r, D_r, M_r, Mp_r, F_r = [x * math.pi / 180 for x in [Lp, D, M, Mp, F]]
-
-        sum_l = (6288774*math.sin(Mp_r) + 1274027*math.sin(2*D_r - Mp_r)
-                + 658314*math.sin(2*D_r) + 213618*math.sin(2*Mp_r)
-                - 185116*math.sin(M_r) - 114332*math.sin(2*F_r))
-
-        sum_b = (5128122*math.sin(F_r) + 280602*math.sin(Mp_r + F_r)
-                + 277693*math.sin(Mp_r - F_r) + 173237*math.sin(2*D_r - F_r))
-
-        sum_r = (-20905355*math.cos(Mp_r) - 3699111*math.cos(2*D_r - Mp_r)
-                - 2955968*math.cos(2*D_r) - 569925*math.cos(2*Mp_r))
-
-        ecl_lon = (Lp + sum_l / 1e6) * math.pi / 180
-        ecl_lat = (sum_b / 1e6) * math.pi / 180
-        dist_km = 385000.56 + sum_r / 1000.0
-
-        eps = (23.4392911 - 0.01300417*T - 1.638e-7*T**2) * math.pi / 180
-        ce, se = math.cos(eps), math.sin(eps)
-        ra = math.atan2(math.sin(ecl_lon)*ce - math.tan(ecl_lat)*se, math.cos(ecl_lon))
-        ra = ra % (2 * math.pi)
-        dec = math.asin(math.sin(ecl_lat)*ce + math.cos(ecl_lat)*se*math.sin(ecl_lon))
+        ra, dec, dist_km = moon_ra_dec_dist_meeus(jd_tt)
 
         cases.append({
             "jd_tt": jd_tt,
@@ -392,21 +419,7 @@ def run_kepler_solver(lines_iter):
         M_rad = float(parts[0])
         e = float(parts[1])
 
-        E = M_rad
-        converged = True
-        iters = 0
-        for iters in range(100):
-            f = E - e * math.sin(E) - M_rad
-            fp = 1.0 - e * math.cos(E)
-            if abs(fp) < 1e-30:
-                converged = False
-                break
-            dE = f / fp
-            E -= dE
-            if abs(dE) < 1e-15:
-                break
-        else:
-            converged = False
+        E, iters, converged = solve_kepler_newton(M_rad, e, max_iter=100, tol=1e-15)
 
         nu = 2.0 * math.atan2(
             math.sqrt(1 + e) * math.sin(E / 2),
@@ -496,16 +509,16 @@ def run_equ_ecl_perf(lines_iter):
         ras.append(float(parts[1]))
         decs.append(float(parts[2]))
 
-    # Warm-up
+    # Warm-up: match measured operation to functional path (eqec06).
     for i in range(min(n, 100)):
-        erfa.ecm06(2451545.0, jds[i] - 2451545.0)
+        erfa.eqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i])
 
     # Timed run
     t0 = time.perf_counter_ns()
     sink = 0.0
     for i in range(n):
-        rm = erfa.ecm06(2451545.0, jds[i] - 2451545.0)
-        sink += rm[0, 0]
+        ecl_lon, _ecl_lat = erfa.eqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i])
+        sink += ecl_lon
     elapsed_ns = time.perf_counter_ns() - t0
 
     result = {
@@ -541,9 +554,9 @@ def run_equ_horizontal_perf(lines_iter):
     # Warm-up
     for i in range(min(n, 100)):
         jd_ut1, jd_tt, ra, dec, lon, lat = params[i]
-        gmst = erfa.gmst06(2451545.0, jd_ut1 - 2451545.0,
-                          2451545.0, jd_tt - 2451545.0)
-        ha = (gmst + lon - ra) % (2 * math.pi)
+        gast = erfa.gst06a(2451545.0, jd_ut1 - 2451545.0,
+                           2451545.0, jd_tt - 2451545.0)
+        ha = (gast + lon - ra) % (2 * math.pi)
         az, el = erfa.hd2ae(ha, dec, lat)
 
     # Timed run
@@ -551,9 +564,9 @@ def run_equ_horizontal_perf(lines_iter):
     sink = 0.0
     for i in range(n):
         jd_ut1, jd_tt, ra, dec, lon, lat = params[i]
-        gmst = erfa.gmst06(2451545.0, jd_ut1 - 2451545.0,
-                          2451545.0, jd_tt - 2451545.0)
-        ha = (gmst + lon - ra) % (2 * math.pi)
+        gast = erfa.gst06a(2451545.0, jd_ut1 - 2451545.0,
+                           2451545.0, jd_tt - 2451545.0)
+        ha = (gast + lon - ra) % (2 * math.pi)
         az, el = erfa.hd2ae(ha, dec, lat)
         sink += az
     elapsed_ns = time.perf_counter_ns() - t0
@@ -586,14 +599,14 @@ def run_solar_position_perf(lines_iter):
 
     # Warm-up
     for i in range(min(n, 100)):
-        erfa.epv00(2451545.0, jds[i] - 2451545.0)
+        sun_ra_dec_dist_from_epv00(jds[i], erfa)
 
     # Timed run
     t0 = time.perf_counter_ns()
     sink = 0.0
     for i in range(n):
-        pvh, pvb = erfa.epv00(2451545.0, jds[i] - 2451545.0)
-        sink += pvh[0][0]
+        ra, _dec, _dist = sun_ra_dec_dist_from_epv00(jds[i], erfa)
+        sink += ra
     elapsed_ns = time.perf_counter_ns() - t0
 
     result = {
@@ -611,11 +624,6 @@ def run_solar_position_perf(lines_iter):
 
 def run_lunar_position_perf(lines_iter):
     """Performance measurement for lunar position computation."""
-    try:
-        import erfa
-    except ImportError:
-        import astropy._erfa as erfa
-
     n = int(next(lines_iter).strip())
 
     jds = []
@@ -624,14 +632,14 @@ def run_lunar_position_perf(lines_iter):
 
     # Warm-up
     for i in range(min(n, 100)):
-        erfa.moon98(2451545.0, jds[i] - 2451545.0)
+        moon_ra_dec_dist_meeus(jds[i])
 
     # Timed run
     t0 = time.perf_counter_ns()
     sink = 0.0
     for i in range(n):
-        rp = erfa.moon98(2451545.0, jds[i] - 2451545.0)
-        sink += rp[0]
+        ra, _dec, _dist_km = moon_ra_dec_dist_meeus(jds[i])
+        sink += ra
     elapsed_ns = time.perf_counter_ns() - t0
 
     result = {
@@ -658,25 +666,15 @@ def run_kepler_solver_perf(lines_iter):
         m_arr.append(float(parts[0]))
         e_arr.append(float(parts[1]))
 
-    def solve_kepler(M, e):
-        E = M
-        for _ in range(20):
-            f = E - e * math.sin(E) - M
-            fp = 1.0 - e * math.cos(E)
-            E -= f / fp
-            if abs(f) < 1e-12:
-                break
-        return E
-
     # Warm-up
     for i in range(min(n, 100)):
-        solve_kepler(m_arr[i], e_arr[i])
+        solve_kepler_newton(m_arr[i], e_arr[i], max_iter=100, tol=1e-15)
 
     # Timed run
     t0 = time.perf_counter_ns()
     sink = 0.0
     for i in range(n):
-        E = solve_kepler(m_arr[i], e_arr[i])
+        E, _iters, _conv = solve_kepler_newton(m_arr[i], e_arr[i], max_iter=100, tol=1e-15)
         sink += E
     elapsed_ns = time.perf_counter_ns() - t0
 

@@ -438,7 +438,7 @@ static void run_frame_rotation_bpn_perf(void) {
         vecs[3*i+0] = vx; vecs[3*i+1] = vy; vecs[3*i+2] = vz;
     }
 
-    /* Warm-up */
+    /* Warm-up: use GAST, matching functional equ_horizontal path. */
     for (int i = 0; i < n && i < 100; i++) {
         double rnpb[3][3];
         eraPnm06a(2451545.0, jds[i] - 2451545.0, rnpb);
@@ -533,10 +533,10 @@ static void run_equ_ecl_perf(void) {
         }
     }
 
-    /* Warm-up */
+    /* Warm-up: match measured operation to functional path (Eqec06). */
     for (int i = 0; i < n && i < 100; i++) {
-        double rm[3][3];
-        eraEcm06(2451545.0, jds[i] - 2451545.0, rm);
+        double ecl_lon, ecl_lat;
+        eraEqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i], &ecl_lon, &ecl_lat);
     }
 
     /* Timed run */
@@ -545,9 +545,9 @@ static void run_equ_ecl_perf(void) {
 
     double sink = 0.0;
     for (int i = 0; i < n; i++) {
-        double rm[3][3];
-        eraEcm06(2451545.0, jds[i] - 2451545.0, rm);
-        sink += rm[0][0];
+        double ecl_lon, ecl_lat;
+        eraEqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i], &ecl_lon, &ecl_lat);
+        sink += ecl_lon;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -588,9 +588,9 @@ static void run_equ_horizontal_perf(void) {
         double lon = params[6*i+4];
         double lat = params[6*i+5];
 
-        double gmst = eraGmst06(2451545.0, jd_ut1 - 2451545.0,
+        double gast = eraGst06a(2451545.0, jd_ut1 - 2451545.0,
                                 2451545.0, jd_tt - 2451545.0);
-        double ha = normalize_angle(gmst + lon - ra);
+        double ha = normalize_angle(gast + lon - ra);
         double az, alt;
         eraHd2ae(ha, dec, lat, &az, &alt);
     }
@@ -608,9 +608,9 @@ static void run_equ_horizontal_perf(void) {
         double lon = params[6*i+4];
         double lat = params[6*i+5];
 
-        double gmst = eraGmst06(2451545.0, jd_ut1 - 2451545.0,
+        double gast = eraGst06a(2451545.0, jd_ut1 - 2451545.0,
                                 2451545.0, jd_tt - 2451545.0);
-        double ha = normalize_angle(gmst + lon - ra);
+        double ha = normalize_angle(gast + lon - ra);
         double az, alt;
         eraHd2ae(ha, dec, lat, &az, &alt);
         sink += az;
@@ -640,10 +640,16 @@ static void run_solar_position_perf(void) {
         }
     }
 
-    /* Warm-up */
+    /* Warm-up: include full RA/Dec/dist extraction (same scope as functional). */
     for (int i = 0; i < n && i < 100; i++) {
         double pvh[2][3], pvb[2][3];
         eraEpv00(2451545.0, jds[i] - 2451545.0, pvh, pvb);
+        double sx = -pvh[0][0], sy = -pvh[0][1], sz = -pvh[0][2];
+        double dist_au = sqrt(sx*sx + sy*sy + sz*sz);
+        double ra = normalize_angle(atan2(sy, sx));
+        double dec = asin(sz / dist_au);
+        (void)ra;
+        (void)dec;
     }
 
     /* Timed run */
@@ -654,7 +660,11 @@ static void run_solar_position_perf(void) {
     for (int i = 0; i < n; i++) {
         double pvh[2][3], pvb[2][3];
         eraEpv00(2451545.0, jds[i] - 2451545.0, pvh, pvb);
-        sink += pvh[0][0];
+        double sx = -pvh[0][0], sy = -pvh[0][1], sz = -pvh[0][2];
+        double dist_au = sqrt(sx*sx + sy*sy + sz*sz);
+        double ra = normalize_angle(atan2(sy, sx));
+        double dec = asin(sz / dist_au);
+        sink += ra + dec;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -681,10 +691,48 @@ static void run_lunar_position_perf(void) {
         }
     }
 
-    /* Warm-up */
+    /* Warm-up: use the same simplified Meeus model as run_lunar_position. */
     for (int i = 0; i < n && i < 100; i++) {
-        double rm[3][3], rp[3];
-        eraMoon98(2451545.0, jds[i] - 2451545.0, rp);
+        double date1 = 2451545.0, date2 = jds[i] - 2451545.0;
+        double T = date2 / 36525.0;
+
+        double Lp = fmod(218.3164477 + 481267.88123421*T
+                    - 0.0015786*T*T + T*T*T/538841.0
+                    - T*T*T*T/65194000.0, 360.0);
+        double D  = fmod(297.8501921 + 445267.1114034*T
+                    - 0.0018819*T*T + T*T*T/545868.0
+                    - T*T*T*T/113065000.0, 360.0);
+        double M  = fmod(357.5291092 + 35999.0502909*T
+                    - 0.0001536*T*T + T*T*T/24490000.0, 360.0);
+        double Mp = fmod(134.9633964 + 477198.8675055*T
+                    + 0.0087414*T*T + T*T*T/69699.0
+                    - T*T*T*T/14712000.0, 360.0);
+        double F  = fmod(93.2720950 + 483202.0175233*T
+                    - 0.0036539*T*T - T*T*T/3526000.0
+                    + T*T*T*T/863310000.0, 360.0);
+
+        double Lp_r = Lp*M_PI/180.0, D_r = D*M_PI/180.0;
+        double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
+
+        double sum_l = 6288774.0*sin(Mp_r)
+                     + 1274027.0*sin(2.0*D_r - Mp_r)
+                     +  658314.0*sin(2.0*D_r)
+                     +  213618.0*sin(2.0*Mp_r)
+                     -  185116.0*sin(M_r)
+                     -  114332.0*sin(2.0*F_r);
+        double sum_b = 5128122.0*sin(F_r)
+                     +  280602.0*sin(Mp_r + F_r)
+                     +  277693.0*sin(Mp_r - F_r)
+                     +  173237.0*sin(2.0*D_r - F_r);
+        double ecl_lon = (Lp + sum_l / 1000000.0) * M_PI / 180.0;
+        double ecl_lat = (sum_b / 1000000.0) * M_PI / 180.0;
+
+        double eps = eraObl06(date1, date2);
+        double ce = cos(eps), se = sin(eps);
+        double ra = normalize_angle(atan2(sin(ecl_lon)*ce - tan(ecl_lat)*se, cos(ecl_lon)));
+        double dec = asin(sin(ecl_lat)*ce + cos(ecl_lat)*se*sin(ecl_lon));
+        (void)ra;
+        (void)dec;
     }
 
     /* Timed run */
@@ -693,9 +741,45 @@ static void run_lunar_position_perf(void) {
 
     double sink = 0.0;
     for (int i = 0; i < n; i++) {
-        double rp[3];
-        eraMoon98(2451545.0, jds[i] - 2451545.0, rp);
-        sink += rp[0];
+        double date1 = 2451545.0, date2 = jds[i] - 2451545.0;
+        double T = date2 / 36525.0;
+
+        double Lp = fmod(218.3164477 + 481267.88123421*T
+                    - 0.0015786*T*T + T*T*T/538841.0
+                    - T*T*T*T/65194000.0, 360.0);
+        double D  = fmod(297.8501921 + 445267.1114034*T
+                    - 0.0018819*T*T + T*T*T/545868.0
+                    - T*T*T*T/113065000.0, 360.0);
+        double M  = fmod(357.5291092 + 35999.0502909*T
+                    - 0.0001536*T*T + T*T*T/24490000.0, 360.0);
+        double Mp = fmod(134.9633964 + 477198.8675055*T
+                    + 0.0087414*T*T + T*T*T/69699.0
+                    - T*T*T*T/14712000.0, 360.0);
+        double F  = fmod(93.2720950 + 483202.0175233*T
+                    - 0.0036539*T*T - T*T*T/3526000.0
+                    + T*T*T*T/863310000.0, 360.0);
+
+        double Lp_r = Lp*M_PI/180.0, D_r = D*M_PI/180.0;
+        double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
+
+        double sum_l = 6288774.0*sin(Mp_r)
+                     + 1274027.0*sin(2.0*D_r - Mp_r)
+                     +  658314.0*sin(2.0*D_r)
+                     +  213618.0*sin(2.0*Mp_r)
+                     -  185116.0*sin(M_r)
+                     -  114332.0*sin(2.0*F_r);
+        double sum_b = 5128122.0*sin(F_r)
+                     +  280602.0*sin(Mp_r + F_r)
+                     +  277693.0*sin(Mp_r - F_r)
+                     +  173237.0*sin(2.0*D_r - F_r);
+        double ecl_lon = (Lp + sum_l / 1000000.0) * M_PI / 180.0;
+        double ecl_lat = (sum_b / 1000000.0) * M_PI / 180.0;
+
+        double eps = eraObl06(date1, date2);
+        double ce = cos(eps), se = sin(eps);
+        double ra = normalize_angle(atan2(sin(ecl_lon)*ce - tan(ecl_lat)*se, cos(ecl_lon)));
+        double dec = asin(sin(ecl_lat)*ce + cos(ecl_lat)*se*sin(ecl_lon));
+        sink += ra + dec;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -724,14 +808,15 @@ static void run_kepler_solver_perf(void) {
         }
     }
 
-    /* Warm-up */
+    /* Warm-up: match kepler_solver settings (100 iters, 1e-15 threshold). */
     for (int i = 0; i < n && i < 100; i++) {
         double E = m_arr[i];
-        for (int iter = 0; iter < 20; iter++) {
+        for (int iter = 0; iter < 100; iter++) {
             double f = E - e_arr[i] * sin(E) - m_arr[i];
             double fp = 1.0 - e_arr[i] * cos(E);
+            if (fabs(fp) < 1e-30) break;
             E -= f / fp;
-            if (fabs(f) < 1e-12) break;
+            if (fabs(f / fp) < 1e-15) break;
         }
     }
 
@@ -742,11 +827,12 @@ static void run_kepler_solver_perf(void) {
     double sink = 0.0;
     for (int i = 0; i < n; i++) {
         double E = m_arr[i];
-        for (int iter = 0; iter < 20; iter++) {
+        for (int iter = 0; iter < 100; iter++) {
             double f = E - e_arr[i] * sin(E) - m_arr[i];
             double fp = 1.0 - e_arr[i] * cos(E);
+            if (fabs(fp) < 1e-30) break;
             E -= f / fp;
-            if (fabs(f) < 1e-12) break;
+            if (fabs(f / fp) < 1e-15) break;
         }
         sink += E;
     }
