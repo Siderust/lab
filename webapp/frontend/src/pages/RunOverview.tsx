@@ -97,6 +97,15 @@ export default function RunOverview() {
         </div>
       )}
 
+      {/* ─── Siderust Scoreboard ──────────────────────────────── */}
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <Target className="h-5 w-5 text-orange-400" />
+          Siderust vs ERFA Scoreboard
+        </h2>
+        <SiderustScoreboard analytics={analytics} runId={run.id} />
+      </section>
+
       {/* ─── Overall ranking cards ────────────────────────────── */}
       <section>
         <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
@@ -259,6 +268,162 @@ export default function RunOverview() {
       })()}
     </div>
   );
+}
+
+// ─── Siderust Scoreboard ─────────────────────────────────────────────
+
+function SiderustScoreboard({
+  analytics,
+  runId,
+}: {
+  analytics: ReturnType<typeof analyzeRun>;
+  runId: string;
+}) {
+  // For each experiment, find Siderust's accuracy and performance relative to ERFA
+  const rows = analytics.experiments.map((exp) => {
+    const siderustAcc = exp.accuracy.find((a) => a.library === "siderust");
+    const siderustPerf = exp.performance.find((p) => p.library === "siderust");
+    const erfaPerf = exp.performance.find((p) => p.library === "erfa" || p.isReference);
+
+    const speedup =
+      erfaPerf?.perOpNs != null && siderustPerf?.perOpNs != null && siderustPerf.perOpNs > 0
+        ? erfaPerf.perOpNs / siderustPerf.perOpNs
+        : null;
+
+    // Grade accuracy: "excellent" / "good" / "fair" / "poor"
+    let accGrade: "excellent" | "good" | "fair" | "poor" | "n/a" = "n/a";
+    if (siderustAcc?.p99 != null) {
+      const val = Math.abs(siderustAcc.p99);
+      if (exp.unit === "mas") {
+        accGrade = val < 1 ? "excellent" : val < 100 ? "good" : val < 10000 ? "fair" : "poor";
+      } else if (exp.unit === "arcsec") {
+        accGrade = val < 0.01 ? "excellent" : val < 1 ? "good" : val < 60 ? "fair" : "poor";
+      } else if (exp.unit === "rad") {
+        accGrade = val < 1e-12 ? "excellent" : val < 1e-6 ? "good" : val < 1e-3 ? "fair" : "poor";
+      } else {
+        accGrade = "good"; // default
+      }
+    }
+
+    const gradeColors = {
+      excellent: "text-emerald-300 bg-emerald-900/40",
+      good: "text-blue-300 bg-blue-900/40",
+      fair: "text-yellow-300 bg-yellow-900/40",
+      poor: "text-red-300 bg-red-900/40",
+      "n/a": "text-gray-400 bg-gray-800",
+    };
+
+    return {
+      name: exp.name,
+      displayName: exp.displayName,
+      unit: exp.unit,
+      p99: siderustAcc?.p99 ?? null,
+      max: siderustAcc?.max ?? null,
+      nsOp: siderustPerf?.perOpNs ?? null,
+      speedup,
+      accGrade,
+      gradeColor: gradeColors[accGrade],
+      isFastest: exp.fastest === "siderust",
+      isMostAccurate: exp.mostAccurate === "siderust",
+    };
+  });
+
+  return (
+    <div className="rounded-xl border border-orange-800/40 bg-orange-950/10 overflow-x-auto">
+      <div className="border-b border-orange-800/30 px-4 py-3">
+        <p className="text-xs text-orange-200/70">
+          How Siderust compares to ERFA (the reference) across all experiments.
+          <span className="text-orange-200/50 ml-1">
+            Grades: Excellent / Good / Fair / Poor based on error magnitude.
+          </span>
+        </p>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-orange-800/20 text-left text-xs uppercase text-gray-400">
+            <th className="px-4 py-2.5">Experiment</th>
+            <th className="px-4 py-2.5 text-center">Accuracy Grade</th>
+            <th className="px-4 py-2.5 text-right">p99 Error</th>
+            <th className="px-4 py-2.5 text-right">Max Error</th>
+            <th className="px-4 py-2.5">Unit</th>
+            <th className="px-4 py-2.5 text-right">Speed vs ERFA</th>
+            <th className="px-4 py-2.5 text-right">Latency</th>
+            <th className="px-4 py-2.5 text-center">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.name} className="border-b border-gray-800/30 hover:bg-gray-800/20">
+              <td className="px-4 py-2.5">
+                <Link
+                  to={`/runs/${runId}/experiments/${row.name}`}
+                  className="text-orange-300 hover:underline text-xs font-medium"
+                >
+                  {row.displayName}
+                </Link>
+              </td>
+              <td className="px-4 py-2.5 text-center">
+                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${row.gradeColor}`}>
+                  {row.accGrade}
+                </span>
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono text-xs text-gray-300">
+                {row.p99 != null ? formatScientific(row.p99) : "\u2014"}
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono text-xs text-gray-400">
+                {row.max != null ? formatScientific(row.max) : "\u2014"}
+              </td>
+              <td className="px-4 py-2.5 text-gray-500 text-xs">{row.unit}</td>
+              <td className={`px-4 py-2.5 text-right font-mono text-xs ${
+                row.speedup != null && row.speedup >= 1 ? "text-emerald-300" : "text-red-300"
+              }`}>
+                {row.speedup != null
+                  ? row.speedup >= 1
+                    ? `${row.speedup.toFixed(1)}x faster`
+                    : `${(1 / row.speedup).toFixed(1)}x slower`
+                  : "\u2014"}
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono text-xs text-gray-400">
+                {row.nsOp != null ? formatNs(row.nsOp) : "\u2014"}
+              </td>
+              <td className="px-4 py-2.5 text-center">
+                <div className="flex items-center justify-center gap-1">
+                  {row.isFastest && (
+                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold bg-yellow-900/60 text-yellow-300">
+                      FASTEST
+                    </span>
+                  )}
+                  {row.isMostAccurate && (
+                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold bg-emerald-900/60 text-emerald-300">
+                      BEST ACC
+                    </span>
+                  )}
+                  {!row.isFastest && !row.isMostAccurate && (
+                    <span className="text-gray-600 text-xs">\u2014</span>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formatScientific(v: number): string {
+  if (v === 0) return "0";
+  const abs = Math.abs(v);
+  if (abs < 1e-3) return v.toExponential(2);
+  if (abs >= 1e6) return v.toExponential(2);
+  return v.toFixed(4);
+}
+
+function formatNs(ns: number): string {
+  if (ns < 1000) return `${ns.toFixed(0)} ns`;
+  if (ns < 1e6) return `${(ns / 1e3).toFixed(1)} \u00B5s`;
+  if (ns < 1e9) return `${(ns / 1e6).toFixed(1)} ms`;
+  return `${(ns / 1e9).toFixed(2)} s`;
 }
 
 // ─── Helper components ───────────────────────────────────────────────
