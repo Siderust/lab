@@ -574,6 +574,10 @@ def compute_angular_accuracy(ref_cases, cand_cases, ref_label, cand_label,
 
 def compute_kepler_accuracy(ref_cases, cand_cases, ref_label, cand_label):
     """Compare Kepler solver results: E and ν residuals, plus self-consistency."""
+    def wrap_to_pi(angle_rad: float) -> float:
+        """Wrap an angle to [-pi, pi] in constant time."""
+        return ((angle_rad + math.pi) % (2.0 * math.pi)) - math.pi
+
     E_errors_rad = []
     nu_errors_rad = []
     consistency_errors = []
@@ -588,25 +592,14 @@ def compute_kepler_accuracy(ref_cases, cand_cases, ref_label, cand_label):
         if any(v is None for v in [r_E, c_E, r_nu, c_nu]):
             nan_count += 1
             continue
-        if any(math.isnan(v) or math.isinf(v) for v in [c_E, c_nu]):
+        if any(not math.isfinite(v) for v in [r_E, c_E, r_nu, c_nu]):
             nan_count += 1
             continue
 
-        E_err = c_E - r_E
-        # Wrap E difference to [-π, π] since E is defined mod 2π
-        while E_err > math.pi:
-            E_err -= 2 * math.pi
-        while E_err < -math.pi:
-            E_err += 2 * math.pi
-        E_errors_rad.append(E_err)
+        # Wrap differences to [-π, π] since E and ν are defined mod 2π.
+        E_errors_rad.append(wrap_to_pi(c_E - r_E))
 
-        nu_err = c_nu - r_nu
-        # Wrap ν difference similarly
-        while nu_err > math.pi:
-            nu_err -= 2 * math.pi
-        while nu_err < -math.pi:
-            nu_err += 2 * math.pi
-        nu_errors_rad.append(nu_err)
+        nu_errors_rad.append(wrap_to_pi(c_nu - r_nu))
 
         # Self-consistency: M = E - e*sin(E) should hold
         M_input = cand_c.get("M_rad", ref_c.get("M_rad", 0.0))

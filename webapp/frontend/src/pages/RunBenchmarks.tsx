@@ -11,7 +11,6 @@ export default function RunBenchmarks() {
   const navigate = useNavigate();
   const [, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
-  const [lines, setLines] = useState<string[]>([]);
 
   // View-logs state for past jobs
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
@@ -34,7 +33,6 @@ export default function RunBenchmarks() {
 
   const handleSubmit = useCallback(
     async (request: BenchmarkRequest) => {
-      setLines([]);
       setStatus("starting");
 
       try {
@@ -44,15 +42,10 @@ export default function RunBenchmarks() {
 
         subscribeBenchmarkLogs(
           job.job_id,
-          (line) => setLines((prev) => [...prev, line]),
+          () => {},
           (finalStatus) => {
             setStatus(finalStatus);
             if (finalStatus === "completed") {
-              setLines((prev) => [
-                ...prev,
-                "",
-                "--- Benchmark completed. Reloading runs... ---",
-              ]);
               // Navigate to runs list after a short delay
               setTimeout(() => navigate("/"), 2000);
             }
@@ -60,10 +53,7 @@ export default function RunBenchmarks() {
         );
       } catch (err) {
         setStatus("error");
-        setLines((prev) => [
-          ...prev,
-          `Error: ${err instanceof Error ? err.message : String(err)}`,
-        ]);
+        console.error("Failed to start benchmark run:", err);
       }
     },
     [navigate]
@@ -88,15 +78,11 @@ export default function RunBenchmarks() {
     <div>
       <Header
         title="Run Benchmarks"
-        subtitle="Select experiments, set parameters, and launch. Output streams live below."
+        subtitle="Select experiments, set parameters, and launch."
       />
 
       <div className="space-y-6">
         <BenchmarkForm onSubmit={handleSubmit} disabled={isRunning} />
-
-        {(lines.length > 0 || isRunning) && (
-          <LogStream lines={lines} status={status} />
-        )}
 
         {status === "completed" && (
           <p className="text-green-400 text-sm">
@@ -105,7 +91,7 @@ export default function RunBenchmarks() {
         )}
         {status === "failed" && (
           <p className="text-red-400 text-sm">
-            Benchmark failed. Check the output above for details.
+            Benchmark failed. Check Job History and open logs for details.
           </p>
         )}
         {status === "closed" && (
