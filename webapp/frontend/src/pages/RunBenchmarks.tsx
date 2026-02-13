@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { startBenchmark, subscribeBenchmarkLogs, fetchJobs, fetchJobLogs } from "../api/client";
+import { startBenchmark, subscribeBenchmarkLogs, fetchJobs, fetchJobLogs, cancelJob } from "../api/client";
 import type { BenchmarkRequest, BenchmarkStatus } from "../api/types";
 import Header from "../components/layout/Header";
 import BenchmarkForm from "../components/benchmark/BenchmarkForm";
 import LogStream from "../components/benchmark/LogStream";
+import { Loader2, X } from "lucide-react";
 
 export default function RunBenchmarks() {
   const navigate = useNavigate();
-  const [, setJobId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // View-logs state for past jobs
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
@@ -72,6 +74,20 @@ export default function RunBenchmarks() {
     }
   }, []);
 
+  const handleCancel = useCallback(async () => {
+    if (!jobId || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      await cancelJob(jobId);
+      setStatus("cancelled");
+    } catch (err) {
+      console.error("Failed to cancel job:", err);
+      setStatus("error");
+    } finally {
+      setIsCancelling(false);
+    }
+  }, [jobId, isCancelling]);
+
   const isRunning = status === "running" || status === "starting";
 
   return (
@@ -82,7 +98,36 @@ export default function RunBenchmarks() {
       />
 
       <div className="space-y-6">
-        <BenchmarkForm onSubmit={handleSubmit} disabled={isRunning} />
+        <div className="space-y-4">
+          <BenchmarkForm onSubmit={handleSubmit} disabled={isRunning} />
+          
+          {/* Loading indicator and cancel button */}
+          {isRunning && (
+            <div className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900/60 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-300">
+                    Benchmark running...
+                  </p>
+                  {jobId && (
+                    <p className="text-xs text-gray-500 font-mono mt-0.5">
+                      Job ID: {jobId}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleCancel}
+                disabled={isCancelling}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <X className="h-4 w-4" />
+                {isCancelling ? "Cancelling..." : "Cancel Execution"}
+              </button>
+            </div>
+          )}
+        </div>
 
         {status === "completed" && (
           <p className="text-green-400 text-sm">
@@ -104,6 +149,11 @@ export default function RunBenchmarks() {
           <p className="text-red-400 text-sm">
             WebSocket error. The benchmark may still be running.
             Check the job history below.
+          </p>
+        )}
+        {status === "cancelled" && (
+          <p className="text-yellow-400 text-sm">
+            Benchmark execution cancelled.
           </p>
         )}
 
@@ -130,6 +180,8 @@ export default function RunBenchmarks() {
                           ? "bg-red-900/50 text-red-300"
                           : job.status === "running"
                           ? "bg-yellow-900/50 text-yellow-300"
+                          : job.status === "cancelled"
+                          ? "bg-orange-900/50 text-orange-300"
                           : "bg-gray-800 text-gray-400"
                       }`}
                     >

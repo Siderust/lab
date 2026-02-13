@@ -40,6 +40,32 @@ async def get_job(job_id: str) -> BenchmarkStatus:
     return status
 
 
+@router.post("/benchmark/jobs/{job_id}/cancel", response_model=BenchmarkStatus)
+async def cancel_job(job_id: str) -> BenchmarkStatus:
+    """Cancel a running benchmark job."""
+    from ..main import runner
+
+    status = runner.get_status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    
+    if status.status not in ["running", "starting"]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job '{job_id}' is not running (status: {status.status})"
+        )
+
+    cancelled = await runner.cancel(job_id)
+    if not cancelled:
+        raise HTTPException(status_code=500, detail="Failed to cancel job")
+
+    # Return updated status
+    updated_status = runner.get_status(job_id)
+    if updated_status is None:
+        raise HTTPException(status_code=500, detail="Job status lost after cancellation")
+    return updated_status
+
+
 @router.get("/benchmark/jobs/{job_id}/logs")
 async def get_job_logs(job_id: str) -> PlainTextResponse:
     """Return the full log output for a job (from disk or memory buffer)."""

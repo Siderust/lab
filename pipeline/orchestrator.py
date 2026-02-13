@@ -1666,8 +1666,9 @@ def run_experiment_kepler_solver(n: int, seed: int, run_perf: bool = True):
 
 def write_results(results: list, experiment: str):
     """Write result JSON files and summary table."""
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    out_dir = RESULTS_DIR / date_str / experiment
+    # Use timestamp with seconds precision to prevent collisions
+    timestamp_str = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    out_dir = RESULTS_DIR / timestamp_str / experiment
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for r in results:
@@ -1682,7 +1683,7 @@ def write_results(results: list, experiment: str):
     summary_path = out_dir / "summary.md"
     with open(summary_path, "w") as f:
         f.write(f"# {experiment} — Summary\n\n")
-        f.write(f"Date: {date_str}\n\n")
+        f.write(f"Timestamp: {timestamp_str}\n\n")
         f.write(summary)
         f.write("\n## Alignment Checklist\n\n")
         if results:

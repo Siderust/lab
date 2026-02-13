@@ -173,6 +173,59 @@ class BenchmarkRunner:
         if q in subs:
             subs.remove(q)
 
+    async def cancel(self, job_id: str) -> bool:
+        """Cancel a running benchmark job.
+        
+        Returns:
+            True if the job was cancelled, False if it wasn't running.
+        """
+        # Check if this job is actually running
+        if job_id not in self._processes or job_id in self._finished:
+            return False
+
+        proc = self._processes.get(job_id)
+        if proc is None or proc.returncode is not None:
+            return False
+
+        logger.info("Cancelling job %s", job_id)
+
+        # Terminate the process gracefully
+        try:
+            proc.terminate()
+            # Wait briefly for graceful shutdown
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                # Force kill if it doesn't terminate
+                proc.kill()
+                await proc.wait()
+        except ProcessLookupError:
+            # Process already died
+            pass
+
+        # Update status
+        status = self._jobs.get(job_id)
+        if status is not None:
+            status.status = "cancelled"
+            status.finished_at = datetime.now(timezone.utc).isoformat()
+            self._persist_job(job_id)
+
+        # Clean up active job tracking
+        if self._active_job == job_id:
+            self._active_job = None
+        self._finished.add(job_id)
+
+        # Notify subscribers
+        for q in self._subscribers.get(job_id, []):
+            try:
+                q.put_nowait("__CANCELLED__")
+                q.put_nowait("__EOF__")
+            except asyncio.QueueFull:
+                pass
+
+        logger.info("Job %s cancelled successfully", job_id)
+        return True
+
     async def _read_output(
         self, job_id: str, proc: asyncio.subprocess.Process
     ) -> None:
@@ -197,9 +250,9 @@ class BenchmarkRunner:
 
             await proc.wait()
         finally:
-            # Update status
+            # Update status (unless already set to cancelled)
             status = self._jobs.get(job_id)
-            if status is not None:
+            if status is not None and status.status != "cancelled":
                 status.status = "completed" if proc.returncode == 0 else "failed"
                 status.finished_at = datetime.now(timezone.utc).isoformat()
             self._active_job = None

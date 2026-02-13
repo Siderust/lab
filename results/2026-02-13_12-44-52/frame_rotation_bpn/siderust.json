@@ -1,0 +1,143 @@
+{
+  "experiment": "frame_rotation_bpn",
+  "candidate_library": "siderust",
+  "reference_library": "erfa",
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "models": {
+      "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
+      "siderust": "IERS 2003 frame bias + Meeus precession (\u03b6,z,\u03b8) + IAU 1980 nutation (63 terms)",
+      "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
+      "libnova": "Meeus precession (\u03b6,z,\u03b8 Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)"
+    },
+    "mode": "common_denominator",
+    "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). Differences measure the model gap, not implementation bugs."
+  },
+  "inputs": {
+    "count": 10,
+    "seed": 42,
+    "epoch_range": [
+      "JD 2415020.0",
+      "JD 2488069.5"
+    ]
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "siderust",
+    "angular_error_mas": {
+      "p50": 60.50347039217759,
+      "p90": 106.90713060660222,
+      "p95": 198.0101261094158,
+      "p99": 270.8925225116671,
+      "max": 289.1131216122298,
+      "min": 23.000604984937436,
+      "mean": 76.7122624855503,
+      "rms": 105.97853444199211
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "max": 0.0,
+      "min": 0.0,
+      "mean": 0.0,
+      "rms": 0.0
+    },
+    "matrix_frobenius": {
+      "p50": 4.56465367485913e-07,
+      "p90": 2.0329692450435527e-06,
+      "p95": 2.1095491643508363e-06,
+      "p99": 2.170813099796663e-06,
+      "max": 2.18612908365812e-06,
+      "min": 2.945506301097473e-07,
+      "mean": 7.290123939509052e-07,
+      "rms": 1.004995742517426e-06
+    },
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2488069.5,
+        "angular_error_mas": 289.1131216122298
+      },
+      {
+        "jd_tt": 2415020.0,
+        "angular_error_mas": 86.6620204948659
+      },
+      {
+        "jd_tt": 2459580.5,
+        "angular_error_mas": 72.08196058260738
+      },
+      {
+        "jd_tt": 2460310.5,
+        "angular_error_mas": 62.0833763272421
+      },
+      {
+        "jd_tt": 2457754.5,
+        "angular_error_mas": 60.62057432194365
+      },
+      {
+        "jd_tt": 2460025.623402052,
+        "angular_error_mas": 60.38636646241154
+      },
+      {
+        "jd_tt": 2451179.5,
+        "angular_error_mas": 42.5888448039677
+      },
+      {
+        "jd_tt": 2453736.5,
+        "angular_error_mas": 37.768846355316114
+      },
+      {
+        "jd_tt": 2451545.0,
+        "angular_error_mas": 32.81690890998135
+      },
+      {
+        "jd_tt": 2451545.5,
+        "angular_error_mas": 23.000604984937436
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 1995.4,
+    "throughput_ops_s": 501153,
+    "total_ns": 19954,
+    "batch_size": 10
+  },
+  "run_metadata": {
+    "date": "2026-02-13T12:44:52Z",
+    "git_shas": {
+      "lab": "0895b39a23e3",
+      "siderust": "7e2e9213ef41",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "cpu": "x86_64",
+    "os": "Linux 6.17.0-14-generic",
+    "toolchain": {
+      "python": "3.12.3",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0"
+    }
+  },
+  "reference_performance": {
+    "per_op_ns": 160057.6,
+    "throughput_ops_s": 6248
+  }
+}
