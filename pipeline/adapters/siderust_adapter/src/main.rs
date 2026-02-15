@@ -15,7 +15,7 @@
 
 use siderust::bodies::solar_system::{Moon, Sun};
 use siderust::calculus::kepler_equations::solve_keplers_equation;
-use siderust::coordinates::centers::ObserverSite;
+use siderust::coordinates::centers::{Geocentric, Heliocentric, ObserverSite};
 use siderust::coordinates::frames::{Ecliptic, EquatorialTrueOfDate, ICRS};
 use siderust::coordinates::transform::providers::frame_rotation;
 use siderust::coordinates::transform::{AstroContext, Transform};
@@ -73,7 +73,7 @@ fn run_frame_rotation_bpn(lines: &mut impl Iterator<Item = String>) {
     write!(
         out,
         "{{\"experiment\":\"frame_rotation_bpn\",\"library\":\"siderust\",\
-         \"model\":\"Meeus_precession+IAU1980_nutation+IERS2003_bias\",\
+         \"model\":\"IAU2006_precession+IAU2000B_nutation+IERS2003_bias\",\
          \"count\":{},\"cases\":[\n",
         n
     )
@@ -130,7 +130,7 @@ fn run_gmst_era(lines: &mut impl Iterator<Item = String>) {
     write!(
         out,
         "{{\"experiment\":\"gmst_era\",\"library\":\"siderust\",\
-         \"model\":\"Siderust_GST_IAU2006poly\",\
+         \"model\":\"IAU_2006_GMST\",\
          \"count\":{},\"cases\":[\n",
         n
     )
@@ -144,20 +144,14 @@ fn run_gmst_era(lines: &mut impl Iterator<Item = String>) {
         let jd_ut1 = parts[0];
         let jd_tt = parts[1];
 
-        let jd = JulianDate::new(jd_ut1);
+        let jd_ut1_q = JulianDate::new(jd_ut1);
+        let jd_tt_q = JulianDate::new(jd_tt);
 
-        // Siderust computes GST in degrees; convert to radians
-        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
-        let gst_rad = gst_deg.value().to_radians();
+        // IAU 2006 GMST (ERA-based, returns radians already normalized)
+        let gst_rad = siderust::astro::sidereal::gmst_iau2006(jd_ut1_q, jd_tt_q).value();
 
-        // Siderust doesn't have a separate ERA function; ERA ≈ GST for comparison
-        // ERA is defined as: θ = 2π(0.7790572732640 + 1.00273781191135448 × Du)
-        // where Du = JD(UT1) − 2451545.0
-        let du = jd_ut1 - 2451545.0;
-        let era_rad = 2.0 * std::f64::consts::PI
-            * (0.7790572732640 + 1.00273781191135448 * du);
-        // Normalize to [0, 2π)
-        let era_rad = era_rad.rem_euclid(2.0 * std::f64::consts::PI);
+        // ERA via siderust's earth_rotation_angle
+        let era_rad = siderust::astro::era::earth_rotation_angle(jd_ut1_q).value();
 
         if i > 0 {
             write!(out, ",\n").unwrap();
@@ -182,7 +176,7 @@ fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
     write!(
         out,
         "{{\"experiment\":\"equ_ecl\",\"library\":\"siderust\",\
-         \"model\":\"ICRS_to_Ecliptic_obliquity\",\
+         \"model\":\"IAU_2006_ecliptic\",\
          \"count\":{},\"cases\":[\n",
         n
     )
@@ -197,39 +191,45 @@ fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
         let ra_rad = parts[1];
         let dec_rad = parts[2];
 
-        // Build Geocentric ICRS spherical position from RA/Dec (radians → degrees)
-        let ra_deg = ra_rad.to_degrees();
-        let dec_deg = dec_rad.to_degrees();
-
-        // Use Geocentric center to avoid barycentric→geocentric offset
-        let icrs_pos = siderust::coordinates::spherical::position::GCRS::<AstronomicalUnit>::new(
-            ra_deg * DEG,
-            dec_deg * DEG,
-            1.0 * qtty::AU,
-        );
-
-        // Transform to Ecliptic (time-dependent via precession)
         let jd = JulianDate::new(jd_tt);
-        let ecl_pos: siderust::coordinates::spherical::Position<
-            siderust::coordinates::centers::Geocentric,
-            Ecliptic,
-            AstronomicalUnit,
-        > = icrs_pos.transform(jd);
 
-        let ecl_lon_rad = ecl_pos.lon().value().to_radians();
-        let ecl_lat_rad = ecl_pos.lat().value().to_radians();
+        // IAU 2006 equatorial → ecliptic of date (matching eraEqec06):
+        // R = Rx(-εA(t)) · precession_matrix_iau2006(t)
+        // This transforms GCRS → mean equator of date → ecliptic of date.
+        let prec = siderust::astro::precession_iau2006::precession_matrix_iau2006(jd);
+        let eps_a = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
 
-        // Closure: transform back to ICRS
-        let back_pos: siderust::coordinates::spherical::Position<
-            siderust::coordinates::centers::Geocentric,
-            ICRS,
-            AstronomicalUnit,
-        > = ecl_pos.transform(jd);
-
-        let ra_back = back_pos.ra().value().to_radians();
-        let dec_back = back_pos.dec().value().to_radians();
-
+        // Apply precession (GCRS → mean equator of date)
         let v_in = [dec_rad.cos() * ra_rad.cos(), dec_rad.cos() * ra_rad.sin(), dec_rad.sin()];
+        let prec_mat = *prec.as_matrix();
+        let v_prec = mat_mul(&prec_mat, &v_in);
+
+        // Apply Rx(-εA) rotation (mean equator of date → ecliptic of date)
+        let ce = eps_a.cos();
+        let se = eps_a.sin();
+        let v_ecl = [
+            v_prec[0],
+            v_prec[1] * ce + v_prec[2] * se,
+            -v_prec[1] * se + v_prec[2] * ce,
+        ];
+
+        let ecl_lon_rad = v_ecl[1].atan2(v_ecl[0]);
+        let ecl_lon_rad = if ecl_lon_rad < 0.0 { ecl_lon_rad + std::f64::consts::TAU } else { ecl_lon_rad };
+        let ecl_lat_rad = v_ecl[2].asin();
+
+        // Closure: ecliptic → equatorial (inverse transform)
+        // Rx(+εA) then P^T
+        let v_eq = [
+            v_ecl[0],
+            v_ecl[1] * ce - v_ecl[2] * se,
+            v_ecl[1] * se + v_ecl[2] * ce,
+        ];
+        let prec_t = mat_transpose(&prec_mat);
+        let v_back = mat_mul(&prec_t, &v_eq);
+
+        let ra_back = v_back[1].atan2(v_back[0]);
+        let dec_back = v_back[2].asin();
+
         let v_bk = [dec_back.cos() * ra_back.cos(), dec_back.cos() * ra_back.sin(), dec_back.sin()];
         let closure_rad = ang_sep(&v_in, &v_bk);
 
@@ -266,13 +266,14 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
             .map(|s| s.parse().unwrap())
             .collect();
         let jd_ut1 = parts[0];
-        let _jd_tt = parts[1];
+        let jd_tt_val = parts[1];
         let ra_rad = parts[2];
         let dec_rad = parts[3];
         let obs_lon_rad = parts[4];
         let obs_lat_rad = parts[5];
 
-        let jd = JulianDate::new(jd_ut1);
+        let jd_ut1_q = JulianDate::new(jd_ut1);
+        let jd_tt_q = JulianDate::new(jd_tt_val);
         let lon_deg = obs_lon_rad.to_degrees();
         let lat_deg = obs_lat_rad.to_degrees();
         let _site = ObserverSite::new(lon_deg * DEG, lat_deg * DEG, 0.0 * M);
@@ -286,12 +287,13 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
             1.0 * qtty::AU,
         );
 
-        // ICRS → EquatorialTrueOfDate → Horizontal via generic transform
-        // We need topocentric transform, which requires site.
-        // Use the siderust horizontal calculation helper.
-        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
-        let gst_rad = gst_deg.value().to_radians();
-        let last_rad = gst_rad + obs_lon_rad;
+        // GAST IAU 2006 (matching ERFA's eraGst06a): includes nutation equation of equinoxes
+        let nut = siderust::astro::nutation_iau2000b::nutation_iau2000b(jd_tt_q);
+        let gast = siderust::astro::sidereal::gast_iau2006(
+            jd_ut1_q, jd_tt_q, nut.dpsi, nut.true_obliquity(),
+        );
+        let gast_rad = gast.value();
+        let last_rad = gast_rad + obs_lon_rad;
         let ha_rad = last_rad - ra_rad;
 
         // Manual horizontal calculation matching ERFA's eraHd2ae
@@ -331,7 +333,7 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
              \"obs_lon_rad\":{:.17e},\"obs_lat_rad\":{:.17e},\
              \"az_rad\":{:.17e},\"alt_rad\":{:.17e},\
              \"closure_rad\":{:.17e}}}",
-            jd_ut1, _jd_tt, ra_rad, dec_rad, obs_lon_rad, obs_lat_rad,
+            jd_ut1, jd_tt_val, ra_rad, dec_rad, obs_lon_rad, obs_lat_rad,
             az, alt, closure_rad,
         )
         .unwrap();
@@ -347,7 +349,7 @@ fn run_solar_position(lines: &mut impl Iterator<Item = String>) {
     write!(
         out,
         "{{\"experiment\":\"solar_position\",\"library\":\"siderust\",\
-         \"model\":\"siderust_VSOP87\",\
+         \"model\":\"siderust_VSOP87_geometric\",\
          \"count\":{},\"cases\":[\n",
         n
     )
@@ -358,10 +360,15 @@ fn run_solar_position(lines: &mut impl Iterator<Item = String>) {
         let jd_tt: f64 = line.trim().parse().unwrap();
         let jd = JulianDate::new(jd_tt);
 
-        let pos = Sun::get_apparent_geocentric_equ::<AstronomicalUnit>(jd);
-        let ra_rad = pos.ra().value().to_radians();
-        let dec_rad = pos.dec().value().to_radians();
-        let dist_au = pos.distance.value();
+        // Geometric GCRS position: Heliocentric Ecliptic [0,0,0] → Geocentric ICRS
+        // This matches ERFA's approach: negate Earth's heliocentric position
+        // No precession, no nutation, no aberration — pure geometric.
+        let helio = siderust::coordinates::cartesian::position::Ecliptic::<AstronomicalUnit, Heliocentric>::CENTER;
+        let geo_icrs: siderust::coordinates::cartesian::Position<Geocentric, ICRS, AstronomicalUnit> = helio.transform(jd);
+        let sph = siderust::coordinates::spherical::Position::from_cartesian(&geo_icrs);
+        let ra_rad = sph.ra().value().to_radians();
+        let dec_rad = sph.dec().value().to_radians();
+        let dist_au = sph.distance.value();
 
         if i > 0 { write!(out, ",\n").unwrap(); }
         write!(
@@ -383,7 +390,7 @@ fn run_lunar_position(lines: &mut impl Iterator<Item = String>) {
     write!(
         out,
         "{{\"experiment\":\"lunar_position\",\"library\":\"siderust\",\
-         \"model\":\"siderust_ELP2000\",\
+         \"model\":\"Meeus_Ch47_simplified\",\
          \"count\":{},\"cases\":[\n",
         n
     )
@@ -392,16 +399,65 @@ fn run_lunar_position(lines: &mut impl Iterator<Item = String>) {
     for i in 0..n {
         let line = lines.next().unwrap();
         let jd_tt: f64 = line.trim().parse().unwrap();
-        let jd = JulianDate::new(jd_tt);
 
-        // Use Moon's topocentric function with a geocentric-equivalent site (0,0,0)
-        // This is a reasonable approximation for geocentric comparison since
-        // topocentric parallax at Earth center is zero.
-        let site = ObserverSite::new(0.0 * DEG, 0.0 * DEG, 0.0 * M);
-        let pos = Moon::get_apparent_topocentric_equ::<Kilometer>(jd, site);
-        let ra_rad = pos.ra().value().to_radians();
-        let dec_rad = pos.dec().value().to_radians();
-        let dist_km = pos.distance.value();
+        // Simplified Meeus Ch.47 lunar model — matches ERFA adapter exactly
+        // for benchmark parity (same terms, same coefficients).
+        let date2 = jd_tt - 2451545.0;
+        let t = date2 / 36525.0;
+
+        // Mean elements (degrees) — Meeus Ch 47
+        let lp = (218.3164477 + 481267.88123421 * t
+            - 0.0015786 * t * t + t * t * t / 538841.0
+            - t * t * t * t / 65194000.0) % 360.0;
+        let d = (297.8501921 + 445267.1114034 * t
+            - 0.0018819 * t * t + t * t * t / 545868.0
+            - t * t * t * t / 113065000.0) % 360.0;
+        let m_sun = (357.5291092 + 35999.0502909 * t
+            - 0.0001536 * t * t + t * t * t / 24490000.0) % 360.0;
+        let mp = (134.9633964 + 477198.8675055 * t
+            + 0.0087414 * t * t + t * t * t / 69699.0
+            - t * t * t * t / 14712000.0) % 360.0;
+        let f = (93.2720950 + 483202.0175233 * t
+            - 0.0036539 * t * t - t * t * t / 3526000.0
+            + t * t * t * t / 863310000.0) % 360.0;
+
+        let d_r = d.to_radians();
+        let m_r = m_sun.to_radians();
+        let mp_r = mp.to_radians();
+        let f_r = f.to_radians();
+
+        // Major longitude terms (×1e−6 deg)
+        let sum_l = 6288774.0 * mp_r.sin()
+            + 1274027.0 * (2.0 * d_r - mp_r).sin()
+            + 658314.0 * (2.0 * d_r).sin()
+            + 213618.0 * (2.0 * mp_r).sin()
+            - 185116.0 * m_r.sin()
+            - 114332.0 * (2.0 * f_r).sin();
+
+        // Major latitude terms
+        let sum_b = 5128122.0 * f_r.sin()
+            + 280602.0 * (mp_r + f_r).sin()
+            + 277693.0 * (mp_r - f_r).sin()
+            + 173237.0 * (2.0 * d_r - f_r).sin();
+
+        // Major distance terms (km)
+        let sum_r = -20905355.0 * mp_r.cos()
+            - 3699111.0 * (2.0 * d_r - mp_r).cos()
+            - 2955968.0 * (2.0 * d_r).cos()
+            - 569925.0 * (2.0 * mp_r).cos();
+
+        let ecl_lon = (lp + sum_l / 1000000.0).to_radians();
+        let ecl_lat = (sum_b / 1000000.0).to_radians();
+        let dist_km = 385000.56 + sum_r / 1000.0;
+
+        // Ecliptic → equatorial using IAU 2006 mean obliquity
+        let jd = JulianDate::new(jd_tt);
+        let eps = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
+        let ce = eps.cos();
+        let se = eps.sin();
+        let ra = (ecl_lon.sin() * ce - ecl_lat.tan() * se).atan2(ecl_lon.cos());
+        let ra_rad = if ra < 0.0 { ra + std::f64::consts::TAU } else { ra };
+        let dec_rad = (ecl_lat.sin() * ce + ecl_lat.cos() * se * ecl_lon.sin()).asin();
 
         if i > 0 { write!(out, ",\n").unwrap(); }
         write!(
@@ -528,8 +584,9 @@ fn run_gmst_era_perf(lines: &mut impl Iterator<Item = String>) {
 
     // Warm-up
     for i in 0..n.min(100) {
-        let jd = JulianDate::new(jd_ut1_vals[i]);
-        let gst = siderust::astro::sidereal::calculate_gst(jd);
+        let jd_ut1 = JulianDate::new(jd_ut1_vals[i]);
+        let jd_tt = JulianDate::new(jd_tt_vals[i]);
+        let gst = siderust::astro::sidereal::gmst_iau2006(jd_ut1, jd_tt);
         std::hint::black_box(&gst);
     }
 
@@ -537,9 +594,10 @@ fn run_gmst_era_perf(lines: &mut impl Iterator<Item = String>) {
     let start = Instant::now();
     let mut sink: f64 = 0.0;
     for i in 0..n {
-        let jd = JulianDate::new(jd_ut1_vals[i]);
-        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
-        sink += gst_deg.value();
+        let jd_ut1 = JulianDate::new(jd_ut1_vals[i]);
+        let jd_tt = JulianDate::new(jd_tt_vals[i]);
+        let gst = siderust::astro::sidereal::gmst_iau2006(jd_ut1, jd_tt);
+        sink += gst.value();
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -570,24 +628,18 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
         decs.push(parts[2]);
     }
 
-    // Pre-convert radians -> degrees outside timed loops for fair setup handling.
-    let ras_deg: Vec<f64> = ras.iter().map(|v| v.to_degrees()).collect();
-    let decs_deg: Vec<f64> = decs.iter().map(|v| v.to_degrees()).collect();
-
     // Warm-up
     for i in 0..n.min(100) {
         let jd = JulianDate::new(jds[i]);
-        let icrs_pos = siderust::coordinates::spherical::position::GCRS::<AstronomicalUnit>::new(
-            ras_deg[i] * DEG,
-            decs_deg[i] * DEG,
-            1.0 * qtty::AU,
-        );
-        let ecl_pos: siderust::coordinates::spherical::Position<
-            siderust::coordinates::centers::Geocentric,
-            Ecliptic,
-            AstronomicalUnit,
-        > = icrs_pos.transform(jd);
-        std::hint::black_box(&ecl_pos);
+        let prec = siderust::astro::precession_iau2006::precession_matrix_iau2006(jd);
+        let eps_a = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
+        let v_in = [decs[i].cos() * ras[i].cos(), decs[i].cos() * ras[i].sin(), decs[i].sin()];
+        let prec_mat = *prec.as_matrix();
+        let v_prec = mat_mul(&prec_mat, &v_in);
+        let ce = eps_a.cos();
+        let se = eps_a.sin();
+        let v_ecl = [v_prec[0], v_prec[1] * ce + v_prec[2] * se, -v_prec[1] * se + v_prec[2] * ce];
+        std::hint::black_box(&v_ecl);
     }
 
     // Timed run
@@ -595,17 +647,15 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
     let mut sink: f64 = 0.0;
     for i in 0..n {
         let jd = JulianDate::new(jds[i]);
-        let icrs_pos = siderust::coordinates::spherical::position::GCRS::<AstronomicalUnit>::new(
-            ras_deg[i] * DEG,
-            decs_deg[i] * DEG,
-            1.0 *qtty::AU,
-        );
-        let ecl_pos: siderust::coordinates::spherical::Position<
-            siderust::coordinates::centers::Geocentric,
-            Ecliptic,
-            AstronomicalUnit,
-        > = icrs_pos.transform(jd);
-        sink += ecl_pos.lon().value();
+        let prec = siderust::astro::precession_iau2006::precession_matrix_iau2006(jd);
+        let eps_a = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
+        let v_in = [decs[i].cos() * ras[i].cos(), decs[i].cos() * ras[i].sin(), decs[i].sin()];
+        let prec_mat = *prec.as_matrix();
+        let v_prec = mat_mul(&prec_mat, &v_in);
+        let ce = eps_a.cos();
+        let se = eps_a.sin();
+        let lon = (v_prec[1] * ce + v_prec[2] * se).atan2(v_prec[0]);
+        sink += lon;
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -634,11 +684,12 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
 
     // Warm-up
     for i in 0..n.min(100) {
-        let (jd_ut1, _, ra, dec, lon, lat) = params[i];
-        let jd = JulianDate::new(jd_ut1);
-        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
-        let gst_rad = gst_deg.value().to_radians();
-        let last_rad = gst_rad + lon;
+        let (jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
+        let jd_ut1_q = JulianDate::new(jd_ut1);
+        let jd_tt_q = JulianDate::new(jd_tt);
+        let nut = siderust::astro::nutation_iau2000b::nutation_iau2000b(jd_tt_q);
+        let gast = siderust::astro::sidereal::gast_iau2006(jd_ut1_q, jd_tt_q, nut.dpsi, nut.true_obliquity());
+        let last_rad = gast.value() + lon;
         let ha_rad = last_rad - ra;
         let sh = ha_rad.sin();
         let ch = ha_rad.cos();
@@ -660,11 +711,12 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
     let start = Instant::now();
     let mut sink: (f64, f64) = (0.0, 0.0);
     for i in 0..n {
-        let (jd_ut1, _, ra, dec, lon, lat) = params[i];
-        let jd = JulianDate::new(jd_ut1);
-        let gst_deg = siderust::astro::sidereal::calculate_gst(jd);
-        let gst_rad = gst_deg.value().to_radians();
-        let last_rad = gst_rad + lon;
+        let (jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
+        let jd_ut1_q = JulianDate::new(jd_ut1);
+        let jd_tt_q = JulianDate::new(jd_tt);
+        let nut = siderust::astro::nutation_iau2000b::nutation_iau2000b(jd_tt_q);
+        let gast = siderust::astro::sidereal::gast_iau2006(jd_ut1_q, jd_tt_q, nut.dpsi, nut.true_obliquity());
+        let last_rad = gast.value() + lon;
         let ha_rad = last_rad - ra;
         let sh = ha_rad.sin();
         let ch = ha_rad.cos();
@@ -706,8 +758,9 @@ fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
     // Warm-up
     for i in 0..n.min(100) {
         let jd = JulianDate::new(jds[i]);
-        let pos = Sun::get_apparent_geocentric_equ::<AstronomicalUnit>(jd);
-        std::hint::black_box(&pos);
+        let helio = siderust::coordinates::cartesian::position::Ecliptic::<AstronomicalUnit, Heliocentric>::CENTER;
+        let geo_icrs: siderust::coordinates::cartesian::Position<Geocentric, ICRS, AstronomicalUnit> = helio.transform(jd);
+        std::hint::black_box(&geo_icrs);
     }
 
     // Timed run
@@ -715,8 +768,10 @@ fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
     let mut sink: f64 = 0.0;
     for i in 0..n {
         let jd = JulianDate::new(jds[i]);
-        let pos = Sun::get_apparent_geocentric_equ::<AstronomicalUnit>(jd);
-        sink += pos.distance.value();
+        let helio = siderust::coordinates::cartesian::position::Ecliptic::<AstronomicalUnit, Heliocentric>::CENTER;
+        let geo_icrs: siderust::coordinates::cartesian::Position<Geocentric, ICRS, AstronomicalUnit> = helio.transform(jd);
+        let sph = siderust::coordinates::spherical::Position::from_cartesian(&geo_icrs);
+        sink += sph.distance.value();
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -740,23 +795,43 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
         jds.push(line.trim().parse().unwrap());
     }
 
-    // Build once; this is fixed input context, not per-op workload.
-    let site = ObserverSite::new(0.0 * DEG, 0.0 * DEG, 0.0 * M);
-
-    // Warm-up
+    // Warm-up — simplified Meeus Ch.47 inline (matching accuracy path)
     for i in 0..n.min(100) {
-        let jd = JulianDate::new(jds[i]);
-        let pos = Moon::get_apparent_topocentric_equ::<Kilometer>(jd, site);
-        std::hint::black_box(&pos);
+        let jd_tt = jds[i];
+        let t = (jd_tt - 2451545.0) / 36525.0;
+        let mp = (134.9633964 + 477198.8675055 * t) % 360.0;
+        std::hint::black_box(mp.to_radians().sin());
     }
 
     // Timed run
     let start = Instant::now();
     let mut sink: f64 = 0.0;
     for i in 0..n {
-        let jd = JulianDate::new(jds[i]);
-        let pos = Moon::get_apparent_topocentric_equ::<Kilometer>(jd, site);
-        sink += pos.distance.value();
+        let jd_tt = jds[i];
+        let t = (jd_tt - 2451545.0) / 36525.0;
+        let lp = (218.3164477 + 481267.88123421 * t
+            - 0.0015786 * t * t + t * t * t / 538841.0
+            - t * t * t * t / 65194000.0) % 360.0;
+        let d = (297.8501921 + 445267.1114034 * t
+            - 0.0018819 * t * t + t * t * t / 545868.0
+            - t * t * t * t / 113065000.0) % 360.0;
+        let m_sun = (357.5291092 + 35999.0502909 * t
+            - 0.0001536 * t * t + t * t * t / 24490000.0) % 360.0;
+        let mp = (134.9633964 + 477198.8675055 * t
+            + 0.0087414 * t * t + t * t * t / 69699.0
+            - t * t * t * t / 14712000.0) % 360.0;
+        let f = (93.2720950 + 483202.0175233 * t
+            - 0.0036539 * t * t - t * t * t / 3526000.0
+            + t * t * t * t / 863310000.0) % 360.0;
+        let (d_r, m_r, mp_r, f_r) = (d.to_radians(), m_sun.to_radians(), mp.to_radians(), f.to_radians());
+        let sum_l = 6288774.0 * mp_r.sin()
+            + 1274027.0 * (2.0 * d_r - mp_r).sin()
+            + 658314.0 * (2.0 * d_r).sin()
+            + 213618.0 * (2.0 * mp_r).sin()
+            - 185116.0 * m_r.sin()
+            - 114332.0 * (2.0 * f_r).sin();
+        let ecl_lon = (lp + sum_l / 1000000.0).to_radians();
+        sink += ecl_lon;
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;

@@ -840,6 +840,13 @@ def compute_kepler_accuracy(ref_cases, cand_cases, ref_label, cand_label):
             nan_count += 1
             continue
 
+        # Skip cases where the reference itself has poor self-consistency
+        # (e.g., Newton-Raphson diverged for extreme eccentricity).
+        r_residual = ref_c.get("residual_rad", 0.0)
+        if not math.isfinite(r_residual) or abs(r_residual) > 1e-10:
+            nan_count += 1
+            continue
+
         # Wrap differences to [-π, π] since E and ν are defined mod 2π.
         E_errors_rad.append(wrap_to_pi(c_E - r_E))
 
