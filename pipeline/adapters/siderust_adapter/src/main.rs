@@ -13,58 +13,57 @@
 //!   kepler_solver           — Kepler equation solver
 //!   frame_rotation_bpn_perf — BPN performance timing
 
-use siderust::astro::nutation;
-use siderust::astro::precession;
-use siderust::astro::sidereal;
 use siderust::calculus::kepler_equations::solve_keplers_equation;
 use siderust::calculus::lunar::meeus_ch47;
-use siderust::coordinates::centers::{Geocentric, Heliocentric};
-use siderust::coordinates::frames::{EquatorialTrueOfDate, ICRS};
+use siderust::coordinates::cartesian;
+use siderust::coordinates::centers::{Geocentric, Heliocentric, ObserverSite, Topocentric};
+use siderust::coordinates::frames::{Ecliptic, EquatorialMeanJ2000, EquatorialMeanOfDate, EquatorialTrueOfDate, Horizontal, ICRS};
+use siderust::coordinates::spherical;
 use siderust::coordinates::transform::providers::frame_rotation;
-use siderust::coordinates::transform::{AstroContext, Transform};
+use siderust::coordinates::transform::{AstroContext, Transform, TransformFrame};
 use siderust::time::JulianDate;
 
-use qtty::AstronomicalUnit;
+use qtty::{AstronomicalUnit, Meter, Radians, M, RAD};
+use nalgebra::Vector3;
 
 use std::io::{self, BufRead, Write};
 use std::time::Instant;
 
-fn normalize3(v: &mut [f64; 3]) {
-    let r = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if r > 0.0 {
-        v[0] /= r;
-        v[1] /= r;
-        v[2] /= r;
+fn normalize_vec3(v: Vector3<f64>) -> Vector3<f64> {
+    let norm = v.norm();
+    if norm > 0.0 {
+        v / norm
+    } else {
+        v
     }
 }
 
-fn ang_sep(a: &[f64; 3], b: &[f64; 3]) -> f64 {
-    let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    dot.clamp(-1.0, 1.0).acos()
+fn ang_sep(a: &Vector3<f64>, b: &Vector3<f64>) -> Radians {
+    let dot = a.dot(b).clamp(-1.0, 1.0);
+    dot.acos() * RAD
 }
 
-/// Compute the full BPN matrix: ICRS → EquatorialTrueOfDate
+/// Compute the full BPN rotation: ICRS → EquatorialTrueOfDate
 /// This composes: frame_bias * precession * nutation
+fn bpn_direction(jd: JulianDate, dir_icrs: &cartesian::Direction<ICRS>) -> cartesian::Direction<EquatorialTrueOfDate> {
+    // Transform ICRS -> EquatorialMeanJ2000 -> EquatorialMeanOfDate -> EquatorialTrueOfDate
+    // Currently we only have simple frame transformations, so we need to use the rotation matrix
+    let ctx = AstroContext::default();
+    let rot = frame_rotation::<ICRS, EquatorialTrueOfDate>(jd, &ctx);
+    let v_in = dir_icrs.as_vec3();
+    let mat = rot.as_matrix();
+    let v_out = Vector3::new(
+        mat[0][0] * v_in[0] + mat[0][1] * v_in[1] + mat[0][2] * v_in[2],
+        mat[1][0] * v_in[0] + mat[1][1] * v_in[1] + mat[1][2] * v_in[2],
+        mat[2][0] * v_in[0] + mat[2][1] * v_in[1] + mat[2][2] * v_in[2],
+    );
+    cartesian::Direction::<EquatorialTrueOfDate>::from_vec3(v_out)
+}
+
 fn bpn_matrix(jd: JulianDate) -> [[f64; 3]; 3] {
     let ctx = AstroContext::default();
     let rot = frame_rotation::<ICRS, EquatorialTrueOfDate>(jd, &ctx);
     *rot.as_matrix()
-}
-
-fn mat_mul(m: &[[f64; 3]; 3], v: &[f64; 3]) -> [f64; 3] {
-    [
-        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
-    ]
-}
-
-fn mat_transpose(m: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    [
-        [m[0][0], m[1][0], m[2][0]],
-        [m[0][1], m[1][1], m[2][1]],
-        [m[0][2], m[1][2], m[2][2]],
-    ]
 }
 
 fn run_frame_rotation_bpn(lines: &mut impl Iterator<Item = String>) {
@@ -90,19 +89,26 @@ fn run_frame_rotation_bpn(lines: &mut impl Iterator<Item = String>) {
             .map(|s| s.parse().unwrap())
             .collect();
         let jd_tt = parts[0];
-        let mut vin = [parts[1], parts[2], parts[3]];
-        normalize3(&mut vin);
+        let vin = normalize_vec3(Vector3::new(parts[1], parts[2], parts[3]));
 
         let jd = JulianDate::new(jd_tt);
-        let mat = bpn_matrix(jd);
-        let mut vout = mat_mul(&mat, &vin);
-        normalize3(&mut vout);
+        let dir_icrs = cartesian::Direction::<ICRS>::from_vec3(vin);
+        let dir_tod = bpn_direction(jd, &dir_icrs);
+        let vout = dir_tod.as_vec3();
 
-        // Closure test: inverse (transpose for rotation) then apply
-        let mat_t = mat_transpose(&mat);
-        let mut vinv = mat_mul(&mat_t, &vout);
-        normalize3(&mut vinv);
-        let closure_rad = ang_sep(&vin, &vinv);
+        // Closure test: inverse transformation
+        let ctx = AstroContext::default();
+        let rot = frame_rotation::<EquatorialTrueOfDate, ICRS>(jd, &ctx);
+        let mat_inv = rot.as_matrix();
+        let vinv = Vector3::new(
+            mat_inv[0][0] * vout[0] + mat_inv[0][1] * vout[1] + mat_inv[0][2] * vout[2],
+            mat_inv[1][0] * vout[0] + mat_inv[1][1] * vout[1] + mat_inv[1][2] * vout[2],
+            mat_inv[2][0] * vout[0] + mat_inv[2][1] * vout[1] + mat_inv[2][2] * vout[2],
+        );
+        let closure_rad = ang_sep(&vin, &vinv).value();
+
+        // Get matrix for output compatibility
+        let mat = bpn_matrix(jd);
 
         if i > 0 {
             write!(out, ",\n").unwrap();
@@ -175,70 +181,52 @@ fn run_gmst_era(lines: &mut impl Iterator<Item = String>) {
     writeln!(out, "\n]}}").unwrap();
 }
 
-fn equatorial_to_ecliptic_of_date(jd: JulianDate, ra_rad: f64, dec_rad: f64) -> (f64, f64) {
-    let rot = precession::gcrs_to_ecliptic_of_date_matrix(jd);
-    let v_in = [
-        dec_rad.cos() * ra_rad.cos(),
-        dec_rad.cos() * ra_rad.sin(),
-        dec_rad.sin(),
-    ];
-    let v_ecl = rot.apply_array(v_in);
-    let lon = v_ecl[1].atan2(v_ecl[0]).rem_euclid(std::f64::consts::TAU);
-    let lat = v_ecl[2].clamp(-1.0, 1.0).asin();
-    (lon, lat)
-}
-
-fn ecliptic_of_date_to_equatorial(jd: JulianDate, lon: f64, lat: f64) -> (f64, f64) {
-    let rot = precession::ecliptic_of_date_to_gcrs_matrix(jd);
-    let v_ecl = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
-    let v_eq = rot.apply_array(v_ecl);
-    let ra = v_eq[1].atan2(v_eq[0]).rem_euclid(std::f64::consts::TAU);
-    let dec = v_eq[2].clamp(-1.0, 1.0).asin();
-    (ra, dec)
-}
-
-fn equatorial_to_horizontal_gast(
-    jd_ut1: JulianDate,
-    jd_tt: JulianDate,
-    ra_rad: f64,
-    dec_rad: f64,
-    obs_lon_rad: f64,
-    obs_lat_rad: f64,
-) -> (f64, f64) {
-    let nut = nutation::nutation_iau2000b(jd_tt);
-    let gast = sidereal::gast_iau2006(jd_ut1, jd_tt, nut.dpsi, nut.true_obliquity());
-    let ha_rad = gast.value() + obs_lon_rad - ra_rad;
-    let (sh, ch) = ha_rad.sin_cos();
+fn equatorial_to_ecliptic_of_date(dir_eq: spherical::Direction<EquatorialMeanJ2000>) -> spherical::Direction<Ecliptic> {
+    // Use siderust's proper cartesian Direction and TransformFrame
+    let ra_rad = dir_eq.azimuth.value().to_radians();
+    let dec_rad = dir_eq.polar.value().to_radians();
     let (sd, cd) = dec_rad.sin_cos();
-    let (sp, cp) = obs_lat_rad.sin_cos();
-    let x = -ch * cd * sp + sd * cp;
-    let y = -sh * cd;
-    let z = ch * cd * cp + sd * sp;
-    let r = (x * x + y * y).sqrt();
-    let az = if r != 0.0 { y.atan2(x) } else { 0.0 }.rem_euclid(std::f64::consts::TAU);
-    let alt = z.atan2(r);
-    (az, alt)
+    let (sa, ca) = ra_rad.sin_cos();
+    let cart_eq = cartesian::Direction::<EquatorialMeanJ2000>::from_vec3(
+        Vector3::new(cd * ca, cd * sa, sd)
+    );
+    let cart_ecl: cartesian::Direction<Ecliptic> = cart_eq.to_frame();
+    spherical::Direction::from_cartesian(&cart_ecl)
 }
 
-fn horizontal_to_equatorial_gast(
-    jd_ut1: JulianDate,
+fn ecliptic_of_date_to_equatorial(dir_ecl: spherical::Direction<Ecliptic>) -> spherical::Direction<EquatorialMeanJ2000> {
+    // Use siderust's proper cartesian Direction and TransformFrame
+    let lon_rad = dir_ecl.azimuth.value().to_radians();
+    let lat_rad = dir_ecl.polar.value().to_radians();
+    let (slat, clat) = lat_rad.sin_cos();
+    let (slon, clon) = lon_rad.sin_cos();
+    let cart_ecl = cartesian::Direction::<Ecliptic>::from_vec3(
+        Vector3::new(clat * clon, clat * slon, slat)
+    );
+    let cart_eq: cartesian::Direction<EquatorialMeanJ2000> = cart_ecl.to_frame();
+    spherical::Direction::from_cartesian(&cart_eq)
+}
+
+fn equatorial_to_horizontal(
     jd_tt: JulianDate,
-    az_rad: f64,
-    alt_rad: f64,
-    obs_lon_rad: f64,
-    obs_lat_rad: f64,
-) -> (f64, f64) {
-    let nut = nutation::nutation_iau2000b(jd_tt);
-    let gast = sidereal::gast_iau2006(jd_ut1, jd_tt, nut.dpsi, nut.true_obliquity());
-    let last_rad = gast.value() + obs_lon_rad;
-    let (sp, cp) = obs_lat_rad.sin_cos();
-    let dec_rad = (sp * alt_rad.sin() + cp * alt_rad.cos() * az_rad.cos())
-        .clamp(-1.0, 1.0)
-        .asin();
-    let ha_rad = (-az_rad.sin() * alt_rad.cos())
-        .atan2(alt_rad.sin() * cp - alt_rad.cos() * az_rad.cos() * sp);
-    let ra_rad = (last_rad - ha_rad).rem_euclid(std::f64::consts::TAU);
-    (ra_rad, dec_rad)
+    dir_eq: spherical::Direction<EquatorialMeanOfDate>,
+    obs_site: ObserverSite,
+) -> spherical::Direction<Horizontal> {
+    // Use siderust's proper Transform trait with Topocentric center and Horizontal frame
+    let pos_eq = dir_eq.position_with_params::<Topocentric, Meter>(obs_site, 1.0 * M);
+    let pos_hor: spherical::Position<Topocentric, Horizontal, Meter> = pos_eq.transform(jd_tt);
+    spherical::Direction::new_raw(pos_hor.polar, pos_hor.azimuth)
+}
+
+fn horizontal_to_equatorial(
+    jd_tt: JulianDate,
+    dir_hor: spherical::Direction<Horizontal>,
+    obs_site: ObserverSite,
+) -> spherical::Direction<EquatorialMeanOfDate> {
+    // Use siderust's proper Transform trait with Topocentric center and Horizontal frame
+    let pos_hor = dir_hor.position_with_params::<Topocentric, Meter>(obs_site, 1.0 * M);
+    let pos_eq: spherical::Position<Topocentric, EquatorialMeanOfDate, Meter> = pos_hor.transform(jd_tt);
+    spherical::Direction::new_raw(pos_eq.polar, pos_eq.azimuth)
 }
 
 fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
@@ -263,24 +251,33 @@ fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
             .map(|s| s.parse().unwrap())
             .collect();
         let jd_tt = parts[0];
+        let ra_deg = parts[1].to_degrees();
+        let dec_deg = parts[2].to_degrees();
+
+        let dir_eq = spherical::Direction::<EquatorialMeanJ2000>::new_raw(
+            dec_deg * qtty::DEG,
+            ra_deg * qtty::DEG,
+        );
+
         let ra_rad = parts[1];
         let dec_rad = parts[2];
-
-        let jd = JulianDate::new(jd_tt);
-        let v_in = [
+        let v_in = Vector3::new(
             dec_rad.cos() * ra_rad.cos(),
             dec_rad.cos() * ra_rad.sin(),
             dec_rad.sin(),
-        ];
-        let (ecl_lon_rad, ecl_lat_rad) = equatorial_to_ecliptic_of_date(jd, ra_rad, dec_rad);
-        let (ra_back, dec_back) = ecliptic_of_date_to_equatorial(jd, ecl_lon_rad, ecl_lat_rad);
+        );
+        
+        let dir_ecl = equatorial_to_ecliptic_of_date(dir_eq);
+        let dir_eq_back = ecliptic_of_date_to_equatorial(dir_ecl);
 
-        let v_bk = [
-            dec_back.cos() * ra_back.cos(),
-            dec_back.cos() * ra_back.sin(),
-            dec_back.sin(),
-        ];
-        let closure_rad = ang_sep(&v_in, &v_bk);
+        let ra_back_rad = dir_eq_back.azimuth.value().to_radians();
+        let dec_back_rad = dir_eq_back.polar.value().to_radians();
+        let v_bk = Vector3::new(
+            dec_back_rad.cos() * ra_back_rad.cos(),
+            dec_back_rad.cos() * ra_back_rad.sin(),
+            dec_back_rad.sin(),
+        );
+        let closure = ang_sep(&v_in, &v_bk);
 
         if i > 0 {
             write!(out, ",\n").unwrap();
@@ -290,7 +287,9 @@ fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
             "{{\"jd_tt\":{:.15},\"ra_rad\":{:.17e},\"dec_rad\":{:.17e},\
              \"ecl_lon_rad\":{:.17e},\"ecl_lat_rad\":{:.17e},\
              \"closure_rad\":{:.17e}}}",
-            jd_tt, ra_rad, dec_rad, ecl_lon_rad, ecl_lat_rad, closure_rad,
+            jd_tt, ra_rad, dec_rad, 
+            dir_ecl.azimuth.value().to_radians(), dir_ecl.polar.value().to_radians(), 
+            closure.value(),
         )
         .unwrap();
     }
@@ -320,41 +319,40 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
             .collect();
         let jd_ut1 = parts[0];
         let jd_tt_val = parts[1];
+        let ra_deg = parts[2].to_degrees();
+        let dec_deg = parts[3].to_degrees();
+        let obs_lon_deg = parts[4].to_degrees();
+        let obs_lat_deg = parts[5].to_degrees();
+
+        let dir_eq = spherical::Direction::<EquatorialMeanOfDate>::new_raw(
+            dec_deg * qtty::DEG,
+            ra_deg * qtty::DEG,
+        );
+        let obs_site = ObserverSite::new(
+            obs_lon_deg * qtty::DEG,
+            obs_lat_deg * qtty::DEG,
+            0.0 * M
+        );
+
+        let jd_tt_q = JulianDate::new(jd_tt_val);
+        let dir_hor = equatorial_to_horizontal(jd_tt_q, dir_eq, obs_site.clone());
+        let dir_eq_back = horizontal_to_equatorial(jd_tt_q, dir_hor, obs_site);
+
         let ra_rad = parts[2];
         let dec_rad = parts[3];
-        let obs_lon_rad = parts[4];
-        let obs_lat_rad = parts[5];
-
-        let jd_ut1_q = JulianDate::new(jd_ut1);
-        let jd_tt_q = JulianDate::new(jd_tt_val);
-        let (az, alt) = equatorial_to_horizontal_gast(
-            jd_ut1_q,
-            jd_tt_q,
-            ra_rad,
-            dec_rad,
-            obs_lon_rad,
-            obs_lat_rad,
-        );
-        let (ra_back, dec_back) = horizontal_to_equatorial_gast(
-            jd_ut1_q,
-            jd_tt_q,
-            az,
-            alt,
-            obs_lon_rad,
-            obs_lat_rad,
-        );
-
-        let v_in = [
+        let v_in = Vector3::new(
             dec_rad.cos() * ra_rad.cos(),
             dec_rad.cos() * ra_rad.sin(),
             dec_rad.sin(),
-        ];
-        let v_bk = [
-            dec_back.cos() * ra_back.cos(),
-            dec_back.cos() * ra_back.sin(),
-            dec_back.sin(),
-        ];
-        let closure_rad = ang_sep(&v_in, &v_bk);
+        );
+        let ra_back_rad = dir_eq_back.azimuth.value().to_radians();
+        let dec_back_rad = dir_eq_back.polar.value().to_radians();
+        let v_bk = Vector3::new(
+            dec_back_rad.cos() * ra_back_rad.cos(),
+            dec_back_rad.cos() * ra_back_rad.sin(),
+            dec_back_rad.sin(),
+        );
+        let closure = ang_sep(&v_in, &v_bk);
 
         if i > 0 {
             write!(out, ",\n").unwrap();
@@ -366,7 +364,9 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
              \"obs_lon_rad\":{:.17e},\"obs_lat_rad\":{:.17e},\
              \"az_rad\":{:.17e},\"alt_rad\":{:.17e},\
              \"closure_rad\":{:.17e}}}",
-            jd_ut1, jd_tt_val, ra_rad, dec_rad, obs_lon_rad, obs_lat_rad, az, alt, closure_rad,
+            jd_ut1, jd_tt_val, ra_rad, dec_rad, parts[4], parts[5],
+            dir_hor.azimuth.value().to_radians(), dir_hor.polar.value().to_radians(), 
+            closure.value(),
         )
         .unwrap();
     }
@@ -405,8 +405,8 @@ fn run_solar_position(lines: &mut impl Iterator<Item = String>) {
             AstronomicalUnit,
         > = helio.transform(jd);
         let sph = siderust::coordinates::spherical::Position::from_cartesian(&geo_icrs);
-        let ra_rad = sph.ra().value().to_radians();
-        let dec_rad = sph.dec().value().to_radians();
+        let ra_rad = sph.azimuth.value().to_radians();
+        let dec_rad = sph.polar.value().to_radians();
         let dist_au = sph.distance.value();
 
         if i > 0 {
@@ -441,8 +441,8 @@ fn run_lunar_position(lines: &mut impl Iterator<Item = String>) {
         let line = lines.next().unwrap();
         let jd_tt: f64 = line.trim().parse().unwrap();
         let moon = meeus_ch47::moon_position_meeus_ch47(JulianDate::new(jd_tt));
-        let ra_rad = moon.ra.value();
-        let dec_rad = moon.dec.value();
+        let ra_rad = moon.ra.to::<qtty::Radian>().value();
+        let dec_rad = moon.dec.to::<qtty::Radian>().value();
         let dist_km = moon.dist.value();
 
         if i > 0 {
@@ -519,7 +519,7 @@ fn run_frame_rotation_bpn_perf(lines: &mut impl Iterator<Item = String>) {
     let n: usize = lines.next().unwrap().trim().parse().unwrap();
 
     let mut jds: Vec<f64> = Vec::with_capacity(n);
-    let mut vecs: Vec<[f64; 3]> = Vec::with_capacity(n);
+    let mut dirs: Vec<cartesian::Direction<ICRS>> = Vec::with_capacity(n);
 
     for _ in 0..n {
         let line = lines.next().unwrap();
@@ -529,26 +529,24 @@ fn run_frame_rotation_bpn_perf(lines: &mut impl Iterator<Item = String>) {
             .map(|s| s.parse().unwrap())
             .collect();
         jds.push(parts[0]);
-        let mut v = [parts[1], parts[2], parts[3]];
-        normalize3(&mut v);
-        vecs.push(v);
+        let v = normalize_vec3(Vector3::new(parts[1], parts[2], parts[3]));
+        dirs.push(cartesian::Direction::<ICRS>::from_vec3(v));
     }
 
     // Warm-up
     for i in 0..n.min(100) {
         let jd = JulianDate::new(jds[i]);
-        let mat = bpn_matrix(jd);
-        std::hint::black_box(&mat);
+        let dir_tod = bpn_direction(jd, &dirs[i]);
+        std::hint::black_box(&dir_tod);
     }
 
     // Timed run
     let start = Instant::now();
-    let mut sink = [0.0f64; 3];
+    let mut sink = Vector3::zeros();
     for i in 0..n {
         let jd = JulianDate::new(jds[i]);
-        let mat = bpn_matrix(jd);
-        let vout = mat_mul(&mat, &vecs[i]);
-        sink = vout;
+        let dir_tod = bpn_direction(jd, &dirs[i]);
+        sink = dir_tod.as_vec3();
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -637,8 +635,11 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
 
     // Warm-up
     for i in 0..n.min(100) {
-        let jd = JulianDate::new(jds[i]);
-        let res = equatorial_to_ecliptic_of_date(jd, ras[i], decs[i]);
+        let dir_eq = spherical::Direction::<EquatorialMeanJ2000>::new_raw(
+            decs[i].to_degrees() * qtty::DEG,
+            ras[i].to_degrees() * qtty::DEG,
+        );
+        let res = equatorial_to_ecliptic_of_date(dir_eq);
         std::hint::black_box(&res);
     }
 
@@ -646,10 +647,12 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
     let start = Instant::now();
     let mut sink: f64 = 0.0;
     for i in 0..n {
-        let jd = JulianDate::new(jds[i]);
-        let (lon, _) =
-            equatorial_to_ecliptic_of_date(jd, ras[i], decs[i]);
-        sink += lon;
+        let dir_eq = spherical::Direction::<EquatorialMeanJ2000>::new_raw(
+            decs[i].to_degrees() * qtty::DEG,
+            ras[i].to_degrees() * qtty::DEG,
+        );
+        let dir_ecl = equatorial_to_ecliptic_of_date(dir_eq);
+        sink += dir_ecl.azimuth.value();
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -684,26 +687,38 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
 
     // Warm-up
     for i in 0..n.min(100) {
-        let (jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
-        let jd_ut1_q = JulianDate::new(jd_ut1);
+        let (_jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
         let jd_tt_q = JulianDate::new(jd_tt);
-        let (az, alt) = equatorial_to_horizontal_gast(
-            jd_ut1_q, jd_tt_q, ra, dec, lon, lat,
+        let dir_eq = spherical::Direction::<EquatorialMeanOfDate>::new_raw(
+            dec.to_degrees() * qtty::DEG,
+            ra.to_degrees() * qtty::DEG,
         );
-        std::hint::black_box((az, alt));
+        let obs_site = ObserverSite::new(
+            lon.to_degrees() * qtty::DEG,
+            lat.to_degrees() * qtty::DEG,
+            0.0 * M
+        );
+        let dir_hor = equatorial_to_horizontal(jd_tt_q, dir_eq, obs_site);
+        std::hint::black_box(&dir_hor);
     }
 
     // Timed run
     let start = Instant::now();
     let mut sink: (f64, f64) = (0.0, 0.0);
     for i in 0..n {
-        let (jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
-        let jd_ut1_q = JulianDate::new(jd_ut1);
+        let (_jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
         let jd_tt_q = JulianDate::new(jd_tt);
-        let (az, alt) = equatorial_to_horizontal_gast(
-            jd_ut1_q, jd_tt_q, ra, dec, lon, lat,
+        let dir_eq = spherical::Direction::<EquatorialMeanOfDate>::new_raw(
+            dec.to_degrees() * qtty::DEG,
+            ra.to_degrees() * qtty::DEG,
         );
-        sink = (az, alt);
+        let obs_site = ObserverSite::new(
+            lon.to_degrees() * qtty::DEG,
+            lat.to_degrees() * qtty::DEG,
+            0.0 * M
+        );
+        let dir_hor = equatorial_to_horizontal(jd_tt_q, dir_eq, obs_site);
+        sink = (dir_hor.azimuth.value(), dir_hor.polar.value());
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
