@@ -915,14 +915,14 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
     if experiment == "frame_rotation_bpn":
         base["models"] = {
             "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
-            "siderust": "IERS 2003 frame bias + Meeus precession (ζ,z,θ) + IAU 1980 nutation (63 terms)",
+            "siderust": "IERS 2003 frame bias + IAU 2006 precession + IAU 2000B nutation (frame_rotation provider)",
             "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
             "libnova": "Meeus precession (ζ,z,θ Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)",
         }
         base["mode"] = mode
         base["note"] = (
             "ERFA and Astropy use the same IAU 2006/2000A model (reference). "
-            "Siderust uses Meeus precession + IAU 1980 nutation (lower fidelity). "
+            "Siderust uses IAU 2006 precession + IAU 2000B nutation (close to ERFA, with 2000B vs 2000A differences). "
             "libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). "
             "Differences measure the model gap, not implementation bugs."
         )
@@ -938,20 +938,20 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
     elif experiment == "equ_ecl":
         base["models"] = {
             "erfa": "IAU 2006 obliquity-based transform (eraEqec06 / eraEceq06)",
-            "siderust": "IAU 2006 obliquity, Ecliptic frame via Transform trait",
+            "siderust": "IAU 2006 ecliptic-of-date via precession matrix + mean obliquity",
             "astropy": "IAU 2006 via bundled ERFA (erfa.eqec06 / erfa.eceq06)",
             "libnova": "Meeus obliquity (Eq 22.2) via ln_get_ecl_from_equ / ln_get_equ_from_ecl",
         }
         base["note"] = (
             "ERFA and Astropy share the same IAU 2006 obliquity model (reference). "
-            "Siderust uses IAU 2006 obliquity with its own Ecliptic frame implementation. "
+            "Siderust uses an explicit IAU 2006 equatorial/ecliptic-of-date transform path. "
             "libnova uses Meeus obliquity polynomial — expect ~arcsec-level differences."
         )
 
     elif experiment == "equ_horizontal":
         base["models"] = {
             "erfa": "Spherical trig via eraHd2ae / eraAe2hd; GAST via eraGst06a; no refraction",
-            "siderust": "Manual spherical trig matching ERFA formula; GAST from GST polynomial",
+            "siderust": "Spherical trig matching ERFA formulas; GAST IAU 2006 via siderust astro path",
             "astropy": "eraHd2ae / eraAe2hd via bundled ERFA; GAST via eraGst06a",
             "libnova": "ln_get_hrz_from_equ / ln_get_equ_from_hrz; convention fix: az_erfa = (360 - az_ln + 180) % 360",
         }
@@ -965,7 +965,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
     elif experiment == "solar_position":
         base["models"] = {
             "erfa": "VSOP87 via eraEpv00: heliocentric Earth → geocentric Sun (negate); BCRS equatorial output",
-            "siderust": "VSOP87 via Sun::get_apparent_geocentric_equ (includes aberration + FK5)",
+            "siderust": "Geometric heliocentric-ecliptic center transformed to geocentric ICRS (no aberration)",
             "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
             "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)",
         }
@@ -978,13 +978,13 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
     elif experiment == "lunar_position":
         base["models"] = {
             "erfa": "Simplified Meeus Ch.47 (major terms only, ~10' accuracy)",
-            "siderust": "ELP 2000 via Moon::get_apparent_topocentric_equ with site at (0,0,0)",
+            "siderust": "Simplified Meeus Ch.47 (major terms only), centralized in siderust astro module",
             "astropy": "Simplified Meeus Ch.47 (same algorithm as ERFA adapter)",
             "libnova": "ELP 2000-82B via ln_get_lunar_equ_coords (full model)",
         }
         base["note"] = (
-            "ERFA and Astropy use simplified Meeus (~10' accuracy) — for benchmarking only. "
-            "Siderust and libnova use full ELP 2000 — expect ~arcmin-level differences vs reference. "
+            "ERFA, Astropy, and Siderust use the same simplified Meeus benchmark model (~10' accuracy). "
+            "libnova uses full ELP 2000, so arcminute-level differences vs reference are expected. "
             "No dedicated ERFA Moon ephemeris exists; cross-library comparison is the primary metric."
         )
         base["ephemeris_source"] = "Meeus/ELP 2000 (varies by library)"

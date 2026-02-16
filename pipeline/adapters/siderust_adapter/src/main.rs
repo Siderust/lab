@@ -13,15 +13,18 @@
 //!   kepler_solver           — Kepler equation solver
 //!   frame_rotation_bpn_perf — BPN performance timing
 
-use siderust::bodies::solar_system::{Moon, Sun};
+use siderust::astro::nutation;
+use siderust::astro::precession;
+use siderust::astro::sidereal;
 use siderust::calculus::kepler_equations::solve_keplers_equation;
-use siderust::coordinates::centers::{Geocentric, Heliocentric, ObserverSite};
-use siderust::coordinates::frames::{Ecliptic, EquatorialTrueOfDate, ICRS};
+use siderust::calculus::lunar::meeus_ch47;
+use siderust::coordinates::centers::{Geocentric, Heliocentric};
+use siderust::coordinates::frames::{EquatorialTrueOfDate, ICRS};
 use siderust::coordinates::transform::providers::frame_rotation;
 use siderust::coordinates::transform::{AstroContext, Transform};
 use siderust::time::JulianDate;
 
-use qtty::{AstronomicalUnit, Kilometer, DEG, M};
+use qtty::AstronomicalUnit;
 
 use std::io::{self, BufRead, Write};
 use std::time::Instant;
@@ -81,7 +84,9 @@ fn run_frame_rotation_bpn(lines: &mut impl Iterator<Item = String>) {
 
     for i in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         let jd_tt = parts[0];
@@ -138,7 +143,9 @@ fn run_gmst_era(lines: &mut impl Iterator<Item = String>) {
 
     for i in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         let jd_ut1 = parts[0];
@@ -168,6 +175,72 @@ fn run_gmst_era(lines: &mut impl Iterator<Item = String>) {
     writeln!(out, "\n]}}").unwrap();
 }
 
+fn equatorial_to_ecliptic_of_date(jd: JulianDate, ra_rad: f64, dec_rad: f64) -> (f64, f64) {
+    let rot = precession::gcrs_to_ecliptic_of_date_matrix(jd);
+    let v_in = [
+        dec_rad.cos() * ra_rad.cos(),
+        dec_rad.cos() * ra_rad.sin(),
+        dec_rad.sin(),
+    ];
+    let v_ecl = rot.apply_array(v_in);
+    let lon = v_ecl[1].atan2(v_ecl[0]).rem_euclid(std::f64::consts::TAU);
+    let lat = v_ecl[2].clamp(-1.0, 1.0).asin();
+    (lon, lat)
+}
+
+fn ecliptic_of_date_to_equatorial(jd: JulianDate, lon: f64, lat: f64) -> (f64, f64) {
+    let rot = precession::ecliptic_of_date_to_gcrs_matrix(jd);
+    let v_ecl = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
+    let v_eq = rot.apply_array(v_ecl);
+    let ra = v_eq[1].atan2(v_eq[0]).rem_euclid(std::f64::consts::TAU);
+    let dec = v_eq[2].clamp(-1.0, 1.0).asin();
+    (ra, dec)
+}
+
+fn equatorial_to_horizontal_gast(
+    jd_ut1: JulianDate,
+    jd_tt: JulianDate,
+    ra_rad: f64,
+    dec_rad: f64,
+    obs_lon_rad: f64,
+    obs_lat_rad: f64,
+) -> (f64, f64) {
+    let nut = nutation::nutation_iau2000b(jd_tt);
+    let gast = sidereal::gast_iau2006(jd_ut1, jd_tt, nut.dpsi, nut.true_obliquity());
+    let ha_rad = gast.value() + obs_lon_rad - ra_rad;
+    let (sh, ch) = ha_rad.sin_cos();
+    let (sd, cd) = dec_rad.sin_cos();
+    let (sp, cp) = obs_lat_rad.sin_cos();
+    let x = -ch * cd * sp + sd * cp;
+    let y = -sh * cd;
+    let z = ch * cd * cp + sd * sp;
+    let r = (x * x + y * y).sqrt();
+    let az = if r != 0.0 { y.atan2(x) } else { 0.0 }.rem_euclid(std::f64::consts::TAU);
+    let alt = z.atan2(r);
+    (az, alt)
+}
+
+fn horizontal_to_equatorial_gast(
+    jd_ut1: JulianDate,
+    jd_tt: JulianDate,
+    az_rad: f64,
+    alt_rad: f64,
+    obs_lon_rad: f64,
+    obs_lat_rad: f64,
+) -> (f64, f64) {
+    let nut = nutation::nutation_iau2000b(jd_tt);
+    let gast = sidereal::gast_iau2006(jd_ut1, jd_tt, nut.dpsi, nut.true_obliquity());
+    let last_rad = gast.value() + obs_lon_rad;
+    let (sp, cp) = obs_lat_rad.sin_cos();
+    let dec_rad = (sp * alt_rad.sin() + cp * alt_rad.cos() * az_rad.cos())
+        .clamp(-1.0, 1.0)
+        .asin();
+    let ha_rad = (-az_rad.sin() * alt_rad.cos())
+        .atan2(alt_rad.sin() * cp - alt_rad.cos() * az_rad.cos() * sp);
+    let ra_rad = (last_rad - ha_rad).rem_euclid(std::f64::consts::TAU);
+    (ra_rad, dec_rad)
+}
+
 fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
     let n: usize = lines.next().unwrap().trim().parse().unwrap();
     let stdout = io::stdout();
@@ -184,7 +257,9 @@ fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
 
     for i in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         let jd_tt = parts[0];
@@ -192,48 +267,24 @@ fn run_equ_ecl(lines: &mut impl Iterator<Item = String>) {
         let dec_rad = parts[2];
 
         let jd = JulianDate::new(jd_tt);
-
-        // IAU 2006 equatorial → ecliptic of date (matching eraEqec06):
-        // R = Rx(-εA(t)) · precession_matrix_iau2006(t)
-        // This transforms GCRS → mean equator of date → ecliptic of date.
-        let prec = siderust::astro::precession_iau2006::precession_matrix_iau2006(jd);
-        let eps_a = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
-
-        // Apply precession (GCRS → mean equator of date)
-        let v_in = [dec_rad.cos() * ra_rad.cos(), dec_rad.cos() * ra_rad.sin(), dec_rad.sin()];
-        let prec_mat = *prec.as_matrix();
-        let v_prec = mat_mul(&prec_mat, &v_in);
-
-        // Apply Rx(-εA) rotation (mean equator of date → ecliptic of date)
-        let ce = eps_a.cos();
-        let se = eps_a.sin();
-        let v_ecl = [
-            v_prec[0],
-            v_prec[1] * ce + v_prec[2] * se,
-            -v_prec[1] * se + v_prec[2] * ce,
+        let v_in = [
+            dec_rad.cos() * ra_rad.cos(),
+            dec_rad.cos() * ra_rad.sin(),
+            dec_rad.sin(),
         ];
+        let (ecl_lon_rad, ecl_lat_rad) = equatorial_to_ecliptic_of_date(jd, ra_rad, dec_rad);
+        let (ra_back, dec_back) = ecliptic_of_date_to_equatorial(jd, ecl_lon_rad, ecl_lat_rad);
 
-        let ecl_lon_rad = v_ecl[1].atan2(v_ecl[0]);
-        let ecl_lon_rad = if ecl_lon_rad < 0.0 { ecl_lon_rad + std::f64::consts::TAU } else { ecl_lon_rad };
-        let ecl_lat_rad = v_ecl[2].asin();
-
-        // Closure: ecliptic → equatorial (inverse transform)
-        // Rx(+εA) then P^T
-        let v_eq = [
-            v_ecl[0],
-            v_ecl[1] * ce - v_ecl[2] * se,
-            v_ecl[1] * se + v_ecl[2] * ce,
+        let v_bk = [
+            dec_back.cos() * ra_back.cos(),
+            dec_back.cos() * ra_back.sin(),
+            dec_back.sin(),
         ];
-        let prec_t = mat_transpose(&prec_mat);
-        let v_back = mat_mul(&prec_t, &v_eq);
-
-        let ra_back = v_back[1].atan2(v_back[0]);
-        let dec_back = v_back[2].asin();
-
-        let v_bk = [dec_back.cos() * ra_back.cos(), dec_back.cos() * ra_back.sin(), dec_back.sin()];
         let closure_rad = ang_sep(&v_in, &v_bk);
 
-        if i > 0 { write!(out, ",\n").unwrap(); }
+        if i > 0 {
+            write!(out, ",\n").unwrap();
+        }
         write!(
             out,
             "{{\"jd_tt\":{:.15},\"ra_rad\":{:.17e},\"dec_rad\":{:.17e},\
@@ -262,7 +313,9 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
 
     for i in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         let jd_ut1 = parts[0];
@@ -274,58 +327,38 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
 
         let jd_ut1_q = JulianDate::new(jd_ut1);
         let jd_tt_q = JulianDate::new(jd_tt_val);
-        let lon_deg = obs_lon_rad.to_degrees();
-        let lat_deg = obs_lat_rad.to_degrees();
-        let _site = ObserverSite::new(lon_deg * DEG, lat_deg * DEG, 0.0 * M);
-
-        // Compute Sun horizontal as a reference for the pipeline,
-        // but we actually want arbitrary RA/Dec → horizontal.
-        // Use the generic ICRS→Horizontal transform pipeline.
-        let _icrs_pos = siderust::coordinates::spherical::position::ICRS::<AstronomicalUnit>::new(
-            ra_rad.to_degrees() * DEG,
-            dec_rad.to_degrees() * DEG,
-            1.0 * qtty::AU,
+        let (az, alt) = equatorial_to_horizontal_gast(
+            jd_ut1_q,
+            jd_tt_q,
+            ra_rad,
+            dec_rad,
+            obs_lon_rad,
+            obs_lat_rad,
+        );
+        let (ra_back, dec_back) = horizontal_to_equatorial_gast(
+            jd_ut1_q,
+            jd_tt_q,
+            az,
+            alt,
+            obs_lon_rad,
+            obs_lat_rad,
         );
 
-        // GAST IAU 2006 (matching ERFA's eraGst06a): includes nutation equation of equinoxes
-        let nut = siderust::astro::nutation_iau2000b::nutation_iau2000b(jd_tt_q);
-        let gast = siderust::astro::sidereal::gast_iau2006(
-            jd_ut1_q, jd_tt_q, nut.dpsi, nut.true_obliquity(),
-        );
-        let gast_rad = gast.value();
-        let last_rad = gast_rad + obs_lon_rad;
-        let ha_rad = last_rad - ra_rad;
-
-        // Manual horizontal calculation matching ERFA's eraHd2ae
-        let sh = ha_rad.sin();
-        let ch = ha_rad.cos();
-        let sd = dec_rad.sin();
-        let cd = dec_rad.cos();
-        let sp = obs_lat_rad.sin();
-        let cp = obs_lat_rad.cos();
-
-        let x = -ch * cd * sp + sd * cp;
-        let y = -sh * cd;
-        let z = ch * cd * cp + sd * sp;
-        let r = (x * x + y * y).sqrt();
-        let mut az = if r != 0.0 { y.atan2(x) } else { 0.0 };
-        if az < 0.0 { az += std::f64::consts::TAU; }
-        let alt = z.atan2(r);
-
-        // Closure: reverse
-        let _ha_back = (cp.powi(2) * (-y).atan2(x * sp + z * cp)).sin().atan2(
-            (cp * sd - sp * cd * ch).min(1.0).max(-1.0).asin().cos()
-        );
-        // Simplified closure using the same spherical trig
-        let dec_back = (sp * alt.sin() + cp * alt.cos() * az.cos()).asin();
-        let ha_b = (-az.sin() * alt.cos()).atan2(alt.sin() * cp - alt.cos() * az.cos() * sp);
-        let ra_back = last_rad - ha_b;
-
-        let v_in = [dec_rad.cos() * ra_rad.cos(), dec_rad.cos() * ra_rad.sin(), dec_rad.sin()];
-        let v_bk = [dec_back.cos() * ra_back.cos(), dec_back.cos() * ra_back.sin(), dec_back.sin()];
+        let v_in = [
+            dec_rad.cos() * ra_rad.cos(),
+            dec_rad.cos() * ra_rad.sin(),
+            dec_rad.sin(),
+        ];
+        let v_bk = [
+            dec_back.cos() * ra_back.cos(),
+            dec_back.cos() * ra_back.sin(),
+            dec_back.sin(),
+        ];
         let closure_rad = ang_sep(&v_in, &v_bk);
 
-        if i > 0 { write!(out, ",\n").unwrap(); }
+        if i > 0 {
+            write!(out, ",\n").unwrap();
+        }
         write!(
             out,
             "{{\"jd_ut1\":{:.15},\"jd_tt\":{:.15},\
@@ -333,8 +366,7 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
              \"obs_lon_rad\":{:.17e},\"obs_lat_rad\":{:.17e},\
              \"az_rad\":{:.17e},\"alt_rad\":{:.17e},\
              \"closure_rad\":{:.17e}}}",
-            jd_ut1, jd_tt_val, ra_rad, dec_rad, obs_lon_rad, obs_lat_rad,
-            az, alt, closure_rad,
+            jd_ut1, jd_tt_val, ra_rad, dec_rad, obs_lon_rad, obs_lat_rad, az, alt, closure_rad,
         )
         .unwrap();
     }
@@ -363,14 +395,23 @@ fn run_solar_position(lines: &mut impl Iterator<Item = String>) {
         // Geometric GCRS position: Heliocentric Ecliptic [0,0,0] → Geocentric ICRS
         // This matches ERFA's approach: negate Earth's heliocentric position
         // No precession, no nutation, no aberration — pure geometric.
-        let helio = siderust::coordinates::cartesian::position::Ecliptic::<AstronomicalUnit, Heliocentric>::CENTER;
-        let geo_icrs: siderust::coordinates::cartesian::Position<Geocentric, ICRS, AstronomicalUnit> = helio.transform(jd);
+        let helio = siderust::coordinates::cartesian::position::Ecliptic::<
+            AstronomicalUnit,
+            Heliocentric,
+        >::CENTER;
+        let geo_icrs: siderust::coordinates::cartesian::Position<
+            Geocentric,
+            ICRS,
+            AstronomicalUnit,
+        > = helio.transform(jd);
         let sph = siderust::coordinates::spherical::Position::from_cartesian(&geo_icrs);
         let ra_rad = sph.ra().value().to_radians();
         let dec_rad = sph.dec().value().to_radians();
         let dist_au = sph.distance.value();
 
-        if i > 0 { write!(out, ",\n").unwrap(); }
+        if i > 0 {
+            write!(out, ",\n").unwrap();
+        }
         write!(
             out,
             "{{\"jd_tt\":{:.15},\
@@ -399,67 +440,14 @@ fn run_lunar_position(lines: &mut impl Iterator<Item = String>) {
     for i in 0..n {
         let line = lines.next().unwrap();
         let jd_tt: f64 = line.trim().parse().unwrap();
+        let moon = meeus_ch47::moon_position_meeus_ch47(JulianDate::new(jd_tt));
+        let ra_rad = moon.ra.value();
+        let dec_rad = moon.dec.value();
+        let dist_km = moon.dist.value();
 
-        // Simplified Meeus Ch.47 lunar model — matches ERFA adapter exactly
-        // for benchmark parity (same terms, same coefficients).
-        let date2 = jd_tt - 2451545.0;
-        let t = date2 / 36525.0;
-
-        // Mean elements (degrees) — Meeus Ch 47
-        let lp = (218.3164477 + 481267.88123421 * t
-            - 0.0015786 * t * t + t * t * t / 538841.0
-            - t * t * t * t / 65194000.0) % 360.0;
-        let d = (297.8501921 + 445267.1114034 * t
-            - 0.0018819 * t * t + t * t * t / 545868.0
-            - t * t * t * t / 113065000.0) % 360.0;
-        let m_sun = (357.5291092 + 35999.0502909 * t
-            - 0.0001536 * t * t + t * t * t / 24490000.0) % 360.0;
-        let mp = (134.9633964 + 477198.8675055 * t
-            + 0.0087414 * t * t + t * t * t / 69699.0
-            - t * t * t * t / 14712000.0) % 360.0;
-        let f = (93.2720950 + 483202.0175233 * t
-            - 0.0036539 * t * t - t * t * t / 3526000.0
-            + t * t * t * t / 863310000.0) % 360.0;
-
-        let d_r = d.to_radians();
-        let m_r = m_sun.to_radians();
-        let mp_r = mp.to_radians();
-        let f_r = f.to_radians();
-
-        // Major longitude terms (×1e−6 deg)
-        let sum_l = 6288774.0 * mp_r.sin()
-            + 1274027.0 * (2.0 * d_r - mp_r).sin()
-            + 658314.0 * (2.0 * d_r).sin()
-            + 213618.0 * (2.0 * mp_r).sin()
-            - 185116.0 * m_r.sin()
-            - 114332.0 * (2.0 * f_r).sin();
-
-        // Major latitude terms
-        let sum_b = 5128122.0 * f_r.sin()
-            + 280602.0 * (mp_r + f_r).sin()
-            + 277693.0 * (mp_r - f_r).sin()
-            + 173237.0 * (2.0 * d_r - f_r).sin();
-
-        // Major distance terms (km)
-        let sum_r = -20905355.0 * mp_r.cos()
-            - 3699111.0 * (2.0 * d_r - mp_r).cos()
-            - 2955968.0 * (2.0 * d_r).cos()
-            - 569925.0 * (2.0 * mp_r).cos();
-
-        let ecl_lon = (lp + sum_l / 1000000.0).to_radians();
-        let ecl_lat = (sum_b / 1000000.0).to_radians();
-        let dist_km = 385000.56 + sum_r / 1000.0;
-
-        // Ecliptic → equatorial using IAU 2006 mean obliquity
-        let jd = JulianDate::new(jd_tt);
-        let eps = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
-        let ce = eps.cos();
-        let se = eps.sin();
-        let ra = (ecl_lon.sin() * ce - ecl_lat.tan() * se).atan2(ecl_lon.cos());
-        let ra_rad = if ra < 0.0 { ra + std::f64::consts::TAU } else { ra };
-        let dec_rad = (ecl_lat.sin() * ce + ecl_lat.cos() * se * ecl_lon.sin()).asin();
-
-        if i > 0 { write!(out, ",\n").unwrap(); }
+        if i > 0 {
+            write!(out, ",\n").unwrap();
+        }
         write!(
             out,
             "{{\"jd_tt\":{:.15},\
@@ -487,7 +475,9 @@ fn run_kepler_solver(lines: &mut impl Iterator<Item = String>) {
 
     for i in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         let m_rad = parts[0];
@@ -498,19 +488,26 @@ fn run_kepler_solver(lines: &mut impl Iterator<Item = String>) {
         let e_rad = e_qty.value();
 
         // True anomaly
-        let nu = 2.0 * ((1.0 + e).sqrt() * (e_rad / 2.0).sin())
-            .atan2((1.0 - e).sqrt() * (e_rad / 2.0).cos());
+        let nu = 2.0
+            * ((1.0 + e).sqrt() * (e_rad / 2.0).sin())
+                .atan2((1.0 - e).sqrt() * (e_rad / 2.0).cos());
 
         // Self-consistency residual
         let residual = (e_rad - e * e_rad.sin() - m_rad).abs();
 
-        if i > 0 { write!(out, ",\n").unwrap(); }
+        if i > 0 {
+            write!(out, ",\n").unwrap();
+        }
         write!(
             out,
             "{{\"M_rad\":{:.17e},\"e\":{:.17e},\
              \"E_rad\":{:.17e},\"nu_rad\":{:.17e},\
              \"residual_rad\":{:.17e},\"iters\":-1,\"converged\":{}}}",
-            m_rad, e, e_rad, nu, residual,
+            m_rad,
+            e,
+            e_rad,
+            nu,
+            residual,
             if residual < 1e-12 { "true" } else { "false" },
         )
         .unwrap();
@@ -526,7 +523,9 @@ fn run_frame_rotation_bpn_perf(lines: &mut impl Iterator<Item = String>) {
 
     for _ in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         jds.push(parts[0]);
@@ -575,7 +574,9 @@ fn run_gmst_era_perf(lines: &mut impl Iterator<Item = String>) {
 
     for _ in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         jd_ut1_vals.push(parts[0]);
@@ -607,7 +608,11 @@ fn run_gmst_era_perf(lines: &mut impl Iterator<Item = String>) {
         "{{\"experiment\":\"gmst_era_perf\",\"library\":\"siderust\",\
          \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
          \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
-        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+        n,
+        total_ns,
+        per_op_ns,
+        n as f64 / (total_ns * 1e-9),
+        sink,
     );
 }
 
@@ -620,7 +625,9 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
 
     for _ in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         jds.push(parts[0]);
@@ -631,15 +638,8 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
     // Warm-up
     for i in 0..n.min(100) {
         let jd = JulianDate::new(jds[i]);
-        let prec = siderust::astro::precession_iau2006::precession_matrix_iau2006(jd);
-        let eps_a = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
-        let v_in = [decs[i].cos() * ras[i].cos(), decs[i].cos() * ras[i].sin(), decs[i].sin()];
-        let prec_mat = *prec.as_matrix();
-        let v_prec = mat_mul(&prec_mat, &v_in);
-        let ce = eps_a.cos();
-        let se = eps_a.sin();
-        let v_ecl = [v_prec[0], v_prec[1] * ce + v_prec[2] * se, -v_prec[1] * se + v_prec[2] * ce];
-        std::hint::black_box(&v_ecl);
+        let res = equatorial_to_ecliptic_of_date(jd, ras[i], decs[i]);
+        std::hint::black_box(&res);
     }
 
     // Timed run
@@ -647,14 +647,8 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
     let mut sink: f64 = 0.0;
     for i in 0..n {
         let jd = JulianDate::new(jds[i]);
-        let prec = siderust::astro::precession_iau2006::precession_matrix_iau2006(jd);
-        let eps_a = siderust::astro::precession_iau2006::mean_obliquity_iau2006(jd).value();
-        let v_in = [decs[i].cos() * ras[i].cos(), decs[i].cos() * ras[i].sin(), decs[i].sin()];
-        let prec_mat = *prec.as_matrix();
-        let v_prec = mat_mul(&prec_mat, &v_in);
-        let ce = eps_a.cos();
-        let se = eps_a.sin();
-        let lon = (v_prec[1] * ce + v_prec[2] * se).atan2(v_prec[0]);
+        let (lon, _) =
+            equatorial_to_ecliptic_of_date(jd, ras[i], decs[i]);
         sink += lon;
     }
     let elapsed = start.elapsed();
@@ -665,7 +659,11 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
         "{{\"experiment\":\"equ_ecl_perf\",\"library\":\"siderust\",\
          \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
          \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
-        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+        n,
+        total_ns,
+        per_op_ns,
+        n as f64 / (total_ns * 1e-9),
+        sink,
     );
 }
 
@@ -676,7 +674,9 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
 
     for _ in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         params.push((parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]));
@@ -687,23 +687,9 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
         let (jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
         let jd_ut1_q = JulianDate::new(jd_ut1);
         let jd_tt_q = JulianDate::new(jd_tt);
-        let nut = siderust::astro::nutation_iau2000b::nutation_iau2000b(jd_tt_q);
-        let gast = siderust::astro::sidereal::gast_iau2006(jd_ut1_q, jd_tt_q, nut.dpsi, nut.true_obliquity());
-        let last_rad = gast.value() + lon;
-        let ha_rad = last_rad - ra;
-        let sh = ha_rad.sin();
-        let ch = ha_rad.cos();
-        let sd = dec.sin();
-        let cd = dec.cos();
-        let sp = lat.sin();
-        let cp = lat.cos();
-        let x = -ch * cd * sp + sd * cp;
-        let y = -sh * cd;
-        let z = ch * cd * cp + sd * sp;
-        let r = (x * x + y * y).sqrt();
-        let mut az = if r != 0.0 { y.atan2(x) } else { 0.0 };
-        if az < 0.0 { az += std::f64::consts::TAU; }
-        let alt = z.atan2(r);
+        let (az, alt) = equatorial_to_horizontal_gast(
+            jd_ut1_q, jd_tt_q, ra, dec, lon, lat,
+        );
         std::hint::black_box((az, alt));
     }
 
@@ -714,23 +700,9 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
         let (jd_ut1, jd_tt, ra, dec, lon, lat) = params[i];
         let jd_ut1_q = JulianDate::new(jd_ut1);
         let jd_tt_q = JulianDate::new(jd_tt);
-        let nut = siderust::astro::nutation_iau2000b::nutation_iau2000b(jd_tt_q);
-        let gast = siderust::astro::sidereal::gast_iau2006(jd_ut1_q, jd_tt_q, nut.dpsi, nut.true_obliquity());
-        let last_rad = gast.value() + lon;
-        let ha_rad = last_rad - ra;
-        let sh = ha_rad.sin();
-        let ch = ha_rad.cos();
-        let sd = dec.sin();
-        let cd = dec.cos();
-        let sp = lat.sin();
-        let cp = lat.cos();
-        let x = -ch * cd * sp + sd * cp;
-        let y = -sh * cd;
-        let z = ch * cd * cp + sd * sp;
-        let r = (x * x + y * y).sqrt();
-        let mut az = if r != 0.0 { y.atan2(x) } else { 0.0 };
-        if az < 0.0 { az += std::f64::consts::TAU; }
-        let alt = z.atan2(r);
+        let (az, alt) = equatorial_to_horizontal_gast(
+            jd_ut1_q, jd_tt_q, ra, dec, lon, lat,
+        );
         sink = (az, alt);
     }
     let elapsed = start.elapsed();
@@ -741,7 +713,11 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
         "{{\"experiment\":\"equ_horizontal_perf\",\"library\":\"siderust\",\
          \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
          \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
-        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink.0,
+        n,
+        total_ns,
+        per_op_ns,
+        n as f64 / (total_ns * 1e-9),
+        sink.0,
     );
 }
 
@@ -758,8 +734,15 @@ fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
     // Warm-up
     for i in 0..n.min(100) {
         let jd = JulianDate::new(jds[i]);
-        let helio = siderust::coordinates::cartesian::position::Ecliptic::<AstronomicalUnit, Heliocentric>::CENTER;
-        let geo_icrs: siderust::coordinates::cartesian::Position<Geocentric, ICRS, AstronomicalUnit> = helio.transform(jd);
+        let helio = siderust::coordinates::cartesian::position::Ecliptic::<
+            AstronomicalUnit,
+            Heliocentric,
+        >::CENTER;
+        let geo_icrs: siderust::coordinates::cartesian::Position<
+            Geocentric,
+            ICRS,
+            AstronomicalUnit,
+        > = helio.transform(jd);
         std::hint::black_box(&geo_icrs);
     }
 
@@ -768,8 +751,15 @@ fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
     let mut sink: f64 = 0.0;
     for i in 0..n {
         let jd = JulianDate::new(jds[i]);
-        let helio = siderust::coordinates::cartesian::position::Ecliptic::<AstronomicalUnit, Heliocentric>::CENTER;
-        let geo_icrs: siderust::coordinates::cartesian::Position<Geocentric, ICRS, AstronomicalUnit> = helio.transform(jd);
+        let helio = siderust::coordinates::cartesian::position::Ecliptic::<
+            AstronomicalUnit,
+            Heliocentric,
+        >::CENTER;
+        let geo_icrs: siderust::coordinates::cartesian::Position<
+            Geocentric,
+            ICRS,
+            AstronomicalUnit,
+        > = helio.transform(jd);
         let sph = siderust::coordinates::spherical::Position::from_cartesian(&geo_icrs);
         sink += sph.distance.value();
     }
@@ -781,7 +771,11 @@ fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
         "{{\"experiment\":\"solar_position_perf\",\"library\":\"siderust\",\
          \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
          \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
-        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+        n,
+        total_ns,
+        per_op_ns,
+        n as f64 / (total_ns * 1e-9),
+        sink,
     );
 }
 
@@ -795,43 +789,18 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
         jds.push(line.trim().parse().unwrap());
     }
 
-    // Warm-up — simplified Meeus Ch.47 inline (matching accuracy path)
+    // Warm-up
     for i in 0..n.min(100) {
-        let jd_tt = jds[i];
-        let t = (jd_tt - 2451545.0) / 36525.0;
-        let mp = (134.9633964 + 477198.8675055 * t) % 360.0;
-        std::hint::black_box(mp.to_radians().sin());
+        let moon = meeus_ch47::moon_position_meeus_ch47(JulianDate::new(jds[i]));
+        std::hint::black_box(moon.ecl_lon.value());
     }
 
     // Timed run
     let start = Instant::now();
     let mut sink: f64 = 0.0;
     for i in 0..n {
-        let jd_tt = jds[i];
-        let t = (jd_tt - 2451545.0) / 36525.0;
-        let lp = (218.3164477 + 481267.88123421 * t
-            - 0.0015786 * t * t + t * t * t / 538841.0
-            - t * t * t * t / 65194000.0) % 360.0;
-        let d = (297.8501921 + 445267.1114034 * t
-            - 0.0018819 * t * t + t * t * t / 545868.0
-            - t * t * t * t / 113065000.0) % 360.0;
-        let m_sun = (357.5291092 + 35999.0502909 * t
-            - 0.0001536 * t * t + t * t * t / 24490000.0) % 360.0;
-        let mp = (134.9633964 + 477198.8675055 * t
-            + 0.0087414 * t * t + t * t * t / 69699.0
-            - t * t * t * t / 14712000.0) % 360.0;
-        let f = (93.2720950 + 483202.0175233 * t
-            - 0.0036539 * t * t - t * t * t / 3526000.0
-            + t * t * t * t / 863310000.0) % 360.0;
-        let (d_r, m_r, mp_r, f_r) = (d.to_radians(), m_sun.to_radians(), mp.to_radians(), f.to_radians());
-        let sum_l = 6288774.0 * mp_r.sin()
-            + 1274027.0 * (2.0 * d_r - mp_r).sin()
-            + 658314.0 * (2.0 * d_r).sin()
-            + 213618.0 * (2.0 * mp_r).sin()
-            - 185116.0 * m_r.sin()
-            - 114332.0 * (2.0 * f_r).sin();
-        let ecl_lon = (lp + sum_l / 1000000.0).to_radians();
-        sink += ecl_lon;
+        let moon = meeus_ch47::moon_position_meeus_ch47(JulianDate::new(jds[i]));
+        sink += moon.ecl_lon.value();
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -841,7 +810,11 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
         "{{\"experiment\":\"lunar_position_perf\",\"library\":\"siderust\",\
          \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
          \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
-        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+        n,
+        total_ns,
+        per_op_ns,
+        n as f64 / (total_ns * 1e-9),
+        sink,
     );
 }
 
@@ -855,7 +828,9 @@ fn run_kepler_solver_perf(lines: &mut impl Iterator<Item = String>) {
 
     for _ in 0..n {
         let line = lines.next().unwrap();
-        let parts: Vec<f64> = line.trim().split_whitespace()
+        let parts: Vec<f64> = line
+            .trim()
+            .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
         m_vals.push(parts[0]);
@@ -883,7 +858,11 @@ fn run_kepler_solver_perf(lines: &mut impl Iterator<Item = String>) {
         "{{\"experiment\":\"kepler_solver_perf\",\"library\":\"siderust\",\
          \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
          \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
-        n, total_ns, per_op_ns, n as f64 / (total_ns * 1e-9), sink,
+        n,
+        total_ns,
+        per_op_ns,
+        n as f64 / (total_ns * 1e-9),
+        sink,
     );
 }
 
