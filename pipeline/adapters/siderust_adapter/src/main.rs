@@ -723,7 +723,7 @@ fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
         std::hint::black_box(&geo_icrs);
     }
 
-    // Timed run
+    // Timed run — perf contract: compute RA + Dec + distance
     let start = Instant::now();
     let mut sink: f64 = 0.0;
     for i in 0..n {
@@ -738,7 +738,10 @@ fn run_solar_position_perf(lines: &mut impl Iterator<Item = String>) {
             AstronomicalUnit,
         > = helio.transform(jd);
         let sph = siderust::coordinates::spherical::Position::from_cartesian(&geo_icrs);
-        sink += sph.distance.value();
+        let ra_rad = sph.azimuth.value().to_radians();
+        let dec_rad = sph.polar.value().to_radians();
+        let dist_au = sph.distance.value();
+        sink += ra_rad + dec_rad + dist_au;
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -769,15 +772,21 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
     // Warm-up
     for i in 0..n.min(100) {
         let moon = meeus_ch47::moon_position_meeus_ch47(JulianDate::new(jds[i]));
-        std::hint::black_box(moon.ecl_lon.value());
+        let ra = moon.ra.to::<qtty::Radian>().value();
+        let dec = moon.dec.to::<qtty::Radian>().value();
+        let dist = moon.dist.value();
+        std::hint::black_box(ra + dec + dist);
     }
 
-    // Timed run
+    // Timed run — perf contract: compute RA + Dec + distance
     let start = Instant::now();
     let mut sink: f64 = 0.0;
     for i in 0..n {
         let moon = meeus_ch47::moon_position_meeus_ch47(JulianDate::new(jds[i]));
-        sink += moon.ecl_lon.value();
+        let ra = moon.ra.to::<qtty::Radian>().value();
+        let dec = moon.dec.to::<qtty::Radian>().value();
+        let dist = moon.dist.value();
+        sink += ra + dec + dist;
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;

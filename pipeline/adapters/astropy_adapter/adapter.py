@@ -601,12 +601,12 @@ def run_solar_position_perf(lines_iter):
     for i in range(min(n, 100)):
         sun_ra_dec_dist_from_epv00(jds[i], erfa)
 
-    # Timed run
+    # Timed run — perf contract: compute RA + Dec + distance
     t0 = time.perf_counter_ns()
     sink = 0.0
     for i in range(n):
-        ra, _dec, _dist = sun_ra_dec_dist_from_epv00(jds[i], erfa)
-        sink += ra
+        ra, dec, dist = sun_ra_dec_dist_from_epv00(jds[i], erfa)
+        sink += ra + dec + dist
     elapsed_ns = time.perf_counter_ns() - t0
 
     result = {
@@ -634,12 +634,12 @@ def run_lunar_position_perf(lines_iter):
     for i in range(min(n, 100)):
         moon_ra_dec_dist_meeus(jds[i])
 
-    # Timed run
+    # Timed run — perf contract: compute RA + Dec + distance
     t0 = time.perf_counter_ns()
     sink = 0.0
     for i in range(n):
-        ra, _dec, _dist_km = moon_ra_dec_dist_meeus(jds[i])
-        sink += ra
+        ra, dec, dist_km = moon_ra_dec_dist_meeus(jds[i])
+        sink += ra + dec + dist_km
     elapsed_ns = time.perf_counter_ns() - t0
 
     result = {

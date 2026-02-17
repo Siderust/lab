@@ -652,7 +652,7 @@ static void run_solar_position_perf(void) {
         (void)dec;
     }
 
-    /* Timed run */
+    /* Timed run — perf contract: compute RA + Dec + distance */
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
@@ -664,7 +664,7 @@ static void run_solar_position_perf(void) {
         double dist_au = sqrt(sx*sx + sy*sy + sz*sz);
         double ra = normalize_angle(atan2(sy, sx));
         double dec = asin(sz / dist_au);
-        sink += ra + dec;
+        sink += ra + dec + dist_au;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);

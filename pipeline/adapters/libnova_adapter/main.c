@@ -683,7 +683,7 @@ static void run_solar_position_perf(void) {
         (void)dist_au;
     }
 
-    /* Timed run */
+    /* Timed run — perf contract: compute RA + Dec + distance */
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
@@ -692,7 +692,7 @@ static void run_solar_position_perf(void) {
         struct ln_equ_posn equ;
         ln_get_solar_equ_coords(jds[i], &equ);
         double dist_au = ln_get_earth_solar_dist(jds[i]);
-        sink += equ.ra + dist_au;
+        sink += equ.ra + equ.dec + dist_au;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -727,7 +727,7 @@ static void run_lunar_position_perf(void) {
         (void)dist_km;
     }
 
-    /* Timed run */
+    /* Timed run — perf contract: compute RA + Dec + distance */
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
@@ -736,7 +736,7 @@ static void run_lunar_position_perf(void) {
         struct ln_equ_posn equ;
         ln_get_lunar_equ_coords(jds[i], &equ);
         double dist_km = ln_get_lunar_earth_dist(jds[i]);
-        sink += equ.ra + dist_km;
+        sink += equ.ra + equ.dec + dist_km;
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);

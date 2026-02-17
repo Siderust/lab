@@ -20,9 +20,10 @@ The `--no-perf` flag skips performance measurement, running only accuracy tests.
 All performance tests follow this pattern:
 
 1. **Input Preparation**: Generate or load the same inputs used for accuracy testing
-2. **Warm-up Phase**: Run 100 iterations (or `min(N, 100)`) to warm up caches and branch predictors
-3. **Timed Run**: Execute `N` operations with high-resolution timing
-4. **Metrics Calculation**: Compute per-operation latency and throughput
+2. **Warm-up Phase**: Run `min(N, 100)` iterations to warm up caches and branch predictors
+3. **Timed Run**: Execute `N` operations with high-resolution timing (minimum N=50,000 for stability)
+4. **Multi-Round**: Repeat the timed run for 10 rounds (default); use median as primary metric
+5. **Metrics Calculation**: Compute per-operation latency, throughput, CV%, and confidence intervals
 
 ### Adapter Implementation
 
@@ -45,7 +46,43 @@ Each adapter (erfa, astropy, libnova, siderust) implements performance functions
 
 ## Supported Experiments
 
-All 7 experiments support performance benchmarking:
+All 7 experiments support performance benchmarking.
+
+### Performance Contracts
+
+Each experiment defines a **perf contract**: the exact set of outputs that must be
+computed inside the timed loop, ensuring all adapters do equivalent work.
+
+| Experiment | Perf Contract (computed inside timed loop) |
+|---|---|
+| `frame_rotation_bpn_perf` | Full BPN rotation matrix for each JD |
+| `gmst_era_perf` | GMST value for each JD |
+| `equ_ecl_perf` | Ecliptic longitude + latitude from equatorial coords |
+| `equ_horizontal_perf` | Azimuth + altitude from equatorial coords |
+| `solar_position_perf` | **RA + Dec + distance** for the Sun |
+| `lunar_position_perf` | **RA + Dec + distance** for the Moon |
+| `kepler_solver_perf` | Eccentric anomaly E from (M, e) |
+
+All adapters accumulate computed values into a sink variable to prevent
+dead-code elimination. The sink must include all contract outputs.
+
+### Model Parity Classification
+
+Each experiment is classified for accuracy interpretation:
+
+| Experiment | Parity Class | Accuracy Interpretation |
+|---|---|---|
+| `frame_rotation_bpn` | model-mismatch | Agreement with ERFA baseline |
+| `gmst_era` | model-mismatch | Agreement with ERFA baseline |
+| `equ_ecl` | model-mismatch | Agreement with ERFA baseline |
+| `equ_horizontal` | model-parity | Accuracy vs ERFA reference |
+| `solar_position` | model-mismatch | Agreement with ERFA baseline |
+| `lunar_position` | model-mismatch | Agreement with ERFA baseline |
+| `kepler_solver` | model-parity | Accuracy vs ERFA reference |
+
+**model-parity**: ERFA is an appropriate truth source; errors indicate implementation issues.
+**model-mismatch**: Libraries use different physical models; large differences are expected and
+reflect the model gap, not implementation bugs.
 
 ### 1. Frame Rotation BPN (`frame_rotation_bpn_perf`)
 **Measures**: Bias-precession-nutation matrix computation time  
@@ -201,18 +238,31 @@ Markdown reports (`reports/<date>/<experiment>/summary.md`) include performance 
 
 ### Siderust
 - **Language**: Rust
-- **Optimization**: `--release` (equivalent to `-O3` + LTO)
+- **Optimization**: `--release` (`opt-level=3` + LTO)
 - **Characteristics**: Zero-cost abstractions, strong type safety, competitive with C
 
-### Astropy
-- **Language**: Python (with ERFA bindings via ctypes/Cython)
+### Astropy (pyerfa)
+- **Language**: Python (calls ERFA C kernels directly via pyerfa bindings)
 - **Optimization**: Depends on ERFA C library performance
-- **Characteristics**: Python overhead, but delegates heavy computation to C
+- **Characteristics**: Python loop overhead + ERFA kernel. This measures the pyerfa path, NOT the high-level `astropy.coordinates` stack.
+- **Note**: Results labeled "astropy" should be interpreted as "ERFA via Python" for performance purposes. Accuracy is identical to native ERFA.
 
 ### Libnova
 - **Language**: C
 - **Optimization**: `-O3` with GCC
 - **Characteristics**: Different algorithms (Meeus vs. IAU), sometimes faster due to simplifications
+
+### Compiler Flag Alignment
+
+All C adapters (ERFA, libnova) use `-O3` to match Rust's `opt-level=3`.
+Siderust additionally enables LTO (link-time optimization).
+
+| Adapter | Language | Optimization | LTO |
+|---|---|---|---|
+| ERFA | C | `-O3` | No |
+| libnova | C | `-O3` | No |
+| siderust | Rust | `opt-level=3` | Yes |
+| astropy | Python + C (pyerfa) | N/A (interpreted) | N/A |
 
 ## Interpreting Results
 

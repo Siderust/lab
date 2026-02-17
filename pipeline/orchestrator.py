@@ -48,9 +48,10 @@ RAD_TO_MAS = 180.0 / math.pi * 3600.0 * 1000.0  # radians → milli-arcseconds
 RAD_TO_ARCSEC = 180.0 / math.pi * 3600.0
 
 # Performance benchmarking defaults
-DEFAULT_PERF_ROUNDS = 5         # Number of separate timing rounds
-DEFAULT_PERF_WARMUP = 200       # Warmup iterations before each round
+DEFAULT_PERF_ROUNDS = 10        # Number of separate timing rounds (more rounds = lower CV)
+DEFAULT_PERF_WARMUP = 100       # Warmup iterations before each round (adapters use min(N, 100))
 MIN_MEASURABLE_NS = 10.0        # Warn if per-op time is below this threshold
+MIN_PERF_N = 50000              # Minimum batch size for perf — ensures cheap ops accumulate enough time
 
 # ---------------------------------------------------------------------------
 # Experiment descriptions (for non-expert users)
@@ -910,6 +911,13 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
         "geodesy": "not applicable (direction-only experiment)",
         "refraction": "disabled",
         "ephemeris_source": "not applicable (no aberration/parallax)",
+        "library_notes": {
+            "astropy": (
+                "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. "
+                "Accuracy results are identical to ERFA. Performance results measure "
+                "Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+            ),
+        },
     }
 
     if experiment == "frame_rotation_bpn":
@@ -919,6 +927,8 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
             "libnova": "Meeus precession (ζ,z,θ Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)",
         }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (models differ across libraries)"
         base["mode"] = mode
         base["note"] = (
             "ERFA and Astropy use the same IAU 2006/2000A model (reference). "
@@ -933,6 +943,8 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
             "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)",
         }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (libnova uses Meeus, no ERA)"
         base["mode"] = mode
 
     elif experiment == "equ_ecl":
@@ -942,6 +954,8 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "astropy": "IAU 2006 via bundled ERFA (erfa.eqec06 / erfa.eceq06)",
             "libnova": "Meeus obliquity (Eq 22.2) via ln_get_ecl_from_equ / ln_get_equ_from_ecl",
         }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (libnova Meeus obliquity differs)"
         base["note"] = (
             "ERFA and Astropy share the same IAU 2006 obliquity model (reference). "
             "Siderust uses an explicit IAU 2006 equatorial/ecliptic-of-date transform path. "
@@ -955,6 +969,8 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "astropy": "eraHd2ae / eraAe2hd via bundled ERFA; GAST via eraGst06a",
             "libnova": "ln_get_hrz_from_equ / ln_get_equ_from_hrz; convention fix: az_erfa = (360 - az_ln + 180) % 360",
         }
+        base["model_parity_class"] = "model-parity"
+        base["accuracy_interpretation"] = "accuracy vs ERFA reference (same spherical trig model)"
         base["note"] = (
             "Azimuth convention: ERFA 0°=North CW; libnova 0°=South. "
             "All adapters use the same spherical trig, differences arise from GAST model. "
@@ -969,6 +985,8 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
             "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)",
         }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (VSOP87 truncation levels differ)"
         base["ephemeris_source"] = "VSOP87 (analytic, all libraries)"
         base["note"] = (
             "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). "
@@ -982,6 +1000,11 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "astropy": "Simplified Meeus Ch.47 (same algorithm as ERFA adapter)",
             "libnova": "ELP 2000-82B via ln_get_lunar_equ_coords (full model)",
         }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = (
+            "agreement with ERFA baseline (ERFA uses simplified Meeus, "
+            "libnova uses full ELP 2000 — arcminute-level differences are expected)"
+        )
         base["note"] = (
             "ERFA, Astropy, and Siderust use the same simplified Meeus benchmark model (~10' accuracy). "
             "libnova uses full ELP 2000, so arcminute-level differences vs reference are expected. "
@@ -996,6 +1019,8 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "astropy": "Newton-Raphson iteration in Python (100 iters, tol 1e-15)",
             "libnova": "Sinnott bisection via ln_solve_kepler (internal convergence ~1e-6 deg)",
         }
+        base["model_parity_class"] = "model-parity"
+        base["accuracy_interpretation"] = "accuracy vs ERFA reference (same equation, different solvers)"
         base["note"] = (
             "Kepler's equation M = E - e*sin(E) is solved for E given (M, e). "
             "Self-consistency M_reconstructed = E - e*sin(E) is the primary metric. "
@@ -1333,10 +1358,16 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
 
     # 4) Performance measurement (multi-sample)
     if run_perf:
-        perf_n = min(n, 10000)
+        perf_n = max(MIN_PERF_N, min(n, 10000))
         progress(f"Running performance tests (N={perf_n}, {perf_rounds} rounds)...",
                  exp_name, "performance", total_steps, step + 1)
-        perf_input = format_bpn_perf_input(epochs[:perf_n], directions[:perf_n])
+
+        # Regenerate inputs if perf_n > n
+        if perf_n <= n:
+            perf_epochs, perf_dirs = epochs[:perf_n], directions[:perf_n]
+        else:
+            perf_epochs, perf_dirs, _ = generate_frame_rotation_inputs(perf_n, seed)
+        perf_input = format_bpn_perf_input(perf_epochs, perf_dirs)
 
         for lib, cmd in [
             ("siderust", [str(SIDERUST_BIN)]),
@@ -1449,7 +1480,7 @@ def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = T
 
     # 4) Performance measurement (multi-sample)
     if run_perf and perf_fmt_fn is not None:
-        perf_n = min(n, 10000)
+        perf_n = max(MIN_PERF_N, min(n, 10000))
         progress(f"Running performance tests (N={perf_n}, {perf_rounds} rounds)...",
                  exp_name, "performance", total_steps, step + 1)
 
