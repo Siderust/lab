@@ -195,7 +195,7 @@ Accuracy benchmarks are **fully deterministic** given the same `(N, seed)`:
 Every run produces a `manifest.json` capturing:
 - Exact configuration (experiments, N, seed, perf_rounds)
 - Full environment metadata (CPU model, core count, OS, compiler versions)
-- Git SHAs for all submodules (siderust, erfa, libnova)
+- Git SHAs for all submodules (siderust, anise, erfa, libnova)
 - Git branch and numpy/pyerfa versions
 
 ### CI mode

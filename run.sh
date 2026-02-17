@@ -57,6 +57,9 @@ build_all() {
     log "Building Siderust adapter (Rust, release)..."
     (cd pipeline/adapters/siderust_adapter && cargo build --release 2>&1 | tail -3)
 
+    log "Building ANISE adapter (Rust, release)..."
+    (cd pipeline/adapters/anise_adapter && cargo build --release 2>&1 | tail -3)
+
     log "Setting up Python virtual environment..."
     if [ ! -d .venv ]; then
         python3 -m venv .venv

@@ -191,6 +191,7 @@ export const LIBRARY_COLORS: Record<string, string> = {
   siderust: "#f97316",   // orange
   astropy: "#22c55e",    // green
   libnova: "#ef4444",    // red
+  anise: "#06b6d4",      // cyan
 };
 
 export const ALL_EXPERIMENTS = [

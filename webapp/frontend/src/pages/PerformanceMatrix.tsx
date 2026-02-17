@@ -3,7 +3,7 @@
  * coordinate-transform performance and accuracy against each library.
  *
  * Two tabs: Performance (speedup heatmap) | Accuracy (error heatmap).
- * Library selector: vs ERFA, vs Astropy, vs libnova.
+ * Library selector: vs ERFA, vs Astropy, vs libnova, vs ANISE.
  * Grid: rows = source frames, columns = target frames.
  */
 
@@ -61,6 +61,7 @@ const COMPARISON_LIBS = [
   { key: "siderust_vs_erfa", label: "vs ERFA (C)" },
   { key: "siderust_vs_astropy", label: "vs Astropy (Python)" },
   { key: "siderust_vs_libnova", label: "vs libnova (C)" },
+  { key: "siderust_vs_anise", label: "vs ANISE (Rust)" },
 ];
 
 type TabMode = "perf" | "accuracy";

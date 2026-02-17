@@ -97,33 +97,37 @@ class BenchmarkRunner:
             except asyncio.QueueFull:
                 pass
 
-    async def _rebuild_siderust_adapter(self, job_id: str) -> bool:
-        """Build siderust adapter so benchmark jobs always use current local code."""
-        manifest = self.lab_root / "pipeline" / "adapters" / "siderust_adapter" / "Cargo.toml"
-        cmd = ["cargo", "build", "--release", "--manifest-path", str(manifest)]
-        self._append_log(job_id, "Rebuilding siderust adapter (cargo build --release)...")
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=str(self.lab_root),
-            )
-        except FileNotFoundError:
-            self._append_log(job_id, "ERROR: cargo not found on PATH; cannot build siderust adapter.")
-            return False
+    async def _rebuild_rust_adapters(self, job_id: str) -> bool:
+        """Build Rust adapters so benchmark jobs always use current local code."""
+        manifests = [
+            ("siderust", self.lab_root / "pipeline" / "adapters" / "siderust_adapter" / "Cargo.toml"),
+            ("anise", self.lab_root / "pipeline" / "adapters" / "anise_adapter" / "Cargo.toml"),
+        ]
+        for name, manifest in manifests:
+            cmd = ["cargo", "build", "--release", "--manifest-path", str(manifest)]
+            self._append_log(job_id, f"Rebuilding {name} adapter (cargo build --release)...")
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    cwd=str(self.lab_root),
+                )
+            except FileNotFoundError:
+                self._append_log(job_id, f"ERROR: cargo not found on PATH; cannot build {name} adapter.")
+                return False
 
-        assert proc.stdout is not None
-        async for raw_line in proc.stdout:
-            line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
-            self._append_log(job_id, line)
+            assert proc.stdout is not None
+            async for raw_line in proc.stdout:
+                line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
+                self._append_log(job_id, line)
 
-        rc = await proc.wait()
-        if rc != 0:
-            self._append_log(job_id, f"ERROR: siderust adapter build failed with exit code {rc}.")
-            return False
+            rc = await proc.wait()
+            if rc != 0:
+                self._append_log(job_id, f"ERROR: {name} adapter build failed with exit code {rc}.")
+                return False
 
-        self._append_log(job_id, "Siderust adapter build complete.")
+            self._append_log(job_id, f"{name.capitalize()} adapter build complete.")
         return True
 
     # ------------------------------------------------------------------
@@ -168,7 +172,7 @@ class BenchmarkRunner:
         # Persist initial status
         self._persist_job(job_id)
 
-        build_ok = await self._rebuild_siderust_adapter(job_id)
+        build_ok = await self._rebuild_rust_adapters(job_id)
         if not build_ok:
             status.status = "failed"
             status.finished_at = datetime.now(timezone.utc).isoformat()

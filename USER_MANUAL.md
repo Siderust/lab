@@ -382,10 +382,10 @@ Tools currently wired:
 - `siderust`
 - `astropy`
 - `libnova`
+- `anise` (available for supported experiments; unsupported ones are marked skipped)
 
 Planned extensions:
 
-- add `anise` adapter(s)
 - add orbit propagation + Lambert experiments
 - add macrobenchmarks (end-to-end pipelines) and memory/allocation reporting
 

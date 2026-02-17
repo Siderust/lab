@@ -164,7 +164,7 @@ async def get_performance_matrix(run_id: str):
                 exp_accuracy[exp_id][lib] = acc
 
     # Build 2D grid for each comparison library
-    comparison_libs = ["erfa", "astropy", "libnova"]
+    comparison_libs = ["erfa", "astropy", "libnova", "anise"]
     perf_matrix: dict[str, dict[str, dict]] = {}
     accuracy_matrix: dict[str, dict[str, dict]] = {}
 
@@ -248,4 +248,3 @@ async def get_performance_matrix(run_id: str):
         "perf_matrix": perf_matrix,
         "accuracy_matrix": accuracy_matrix,
     }
-

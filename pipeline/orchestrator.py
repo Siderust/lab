@@ -3,7 +3,7 @@
 Siderust Lab Orchestrator
 =========================
 
-Generates inputs, runs adapters (ERFA, Siderust, Astropy, libnova), collects results,
+Generates inputs, runs adapters (ERFA, Siderust, Astropy, libnova, ANISE), collects results,
 computes accuracy & performance metrics, and writes structured output.
 
 Usage:
@@ -43,6 +43,7 @@ ERFA_BIN = LAB_ROOT / "pipeline" / "adapters" / "erfa_adapter" / "build" / "erfa
 SIDERUST_BIN = LAB_ROOT / "pipeline" / "adapters" / "siderust_adapter" / "target" / "release" / "siderust-adapter"
 ASTROPY_SCRIPT = LAB_ROOT / "pipeline" / "adapters" / "astropy_adapter" / "adapter.py"
 LIBNOVA_BIN = LAB_ROOT / "pipeline" / "adapters" / "libnova_adapter" / "build" / "libnova_adapter"
+ANISE_BIN = LAB_ROOT / "pipeline" / "adapters" / "anise_adapter" / "target" / "release" / "anise-adapter"
 
 RAD_TO_MAS = 180.0 / math.pi * 3600.0 * 1000.0  # radians → milli-arcseconds
 RAD_TO_ARCSEC = 180.0 / math.pi * 3600.0
@@ -52,6 +53,16 @@ DEFAULT_PERF_ROUNDS = 10        # Number of separate timing rounds (more rounds 
 DEFAULT_PERF_WARMUP = 100       # Warmup iterations before each round (adapters use min(N, 100))
 MIN_MEASURABLE_NS = 10.0        # Warn if per-op time is below this threshold
 MIN_PERF_N = 50000              # Minimum batch size for perf — ensures cheap ops accumulate enough time
+
+
+def candidate_adapters():
+    """Return candidate adapter command definitions."""
+    return [
+        ("siderust", [str(SIDERUST_BIN)]),
+        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
+        ("libnova", [str(LIBNOVA_BIN)]),
+        ("anise", [str(ANISE_BIN)]),
+    ]
 
 # ---------------------------------------------------------------------------
 # Experiment descriptions (for non-expert users)
@@ -272,11 +283,10 @@ def dataset_fingerprint(data: dict) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
-def ensure_siderust_adapter_built() -> None:
-    """Build siderust adapter so runs use current local siderust sources."""
-    manifest = LAB_ROOT / "pipeline" / "adapters" / "siderust_adapter" / "Cargo.toml"
+def _build_rust_adapter(manifest: Path, name: str) -> None:
+    """Build a Rust adapter so benchmark runs use current local sources."""
     cmd = ["cargo", "build", "--release", "--manifest-path", str(manifest)]
-    print("Ensuring siderust adapter is up to date...")
+    print(f"Ensuring {name} adapter is up to date...")
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -284,11 +294,23 @@ def ensure_siderust_adapter_built() -> None:
         cwd=str(LAB_ROOT),
     )
     if result.returncode != 0:
-        print("✗ Failed to build siderust adapter.", file=sys.stderr)
+        print(f"✗ Failed to build {name} adapter.", file=sys.stderr)
         if result.stderr:
             print(result.stderr[-1000:], file=sys.stderr)
         raise SystemExit(2)
-    print("✓ Siderust adapter build complete.")
+    print(f"✓ {name.capitalize()} adapter build complete.")
+
+
+def ensure_rust_adapters_built() -> None:
+    """Build Rust adapters used by this lab."""
+    _build_rust_adapter(
+        LAB_ROOT / "pipeline" / "adapters" / "siderust_adapter" / "Cargo.toml",
+        "siderust",
+    )
+    _build_rust_adapter(
+        LAB_ROOT / "pipeline" / "adapters" / "anise_adapter" / "Cargo.toml",
+        "anise",
+    )
 
 # ---------------------------------------------------------------------------
 # Input generation
@@ -1223,6 +1245,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "siderust": "Geometric heliocentric-ecliptic center transformed to geocentric ICRS (no aberration)",
             "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
             "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)",
+            "anise": "SPK translation SUN_J2000 → EARTH_J2000 (DE440 ephemeris, geometric state vector)",
         }
         base["model_parity_class"] = "model-mismatch"
         base["accuracy_interpretation"] = "agreement with ERFA baseline (VSOP87 truncation levels differ)"
@@ -1238,6 +1261,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "siderust": "Simplified Meeus Ch.47 (major terms only), centralized in siderust astro module",
             "astropy": "Simplified Meeus Ch.47 (same algorithm as ERFA adapter)",
             "libnova": "ELP 2000-82B via ln_get_lunar_equ_coords (full model)",
+            "anise": "SPK translation MOON_J2000 → EARTH_J2000 (DE440 ephemeris, geometric state vector)",
         }
         base["model_parity_class"] = "model-mismatch"
         base["accuracy_interpretation"] = (
@@ -1314,6 +1338,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "siderust": "ICRS → EclipticMeanJ2000 via frame rotation (mean obliquity at J2000)",
             "astropy": "IAU 2006 ecliptic rotation via bundled ERFA (erfa.ecm06)",
             "libnova": "Meeus obliquity (Eq 22.2) applied at J2000 epoch",
+            "anise": "J2000 ↔ ECLIPJ2000 built-in orientation rotation (constant obliquity)",
         }
         base["model_parity_class"] = "model-parity"
         base["accuracy_interpretation"] = "accuracy vs ERFA reference (time-independent obliquity)"
@@ -1396,6 +1421,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "siderust": "EclipticMeanJ2000 → ICRS via TransformFrame inverse",
             "astropy": "Transpose of erfa.ecm06(J2000)",
             "libnova": "ln_get_equ_from_ecl at J2000 (Meeus obliquity)",
+            "anise": "Transpose of built-in J2000 ↔ ECLIPJ2000 rotation",
         }
         base["model_parity_class"] = "model-parity"
 
@@ -1405,6 +1431,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "siderust": "EclipticMeanJ2000 ↔ EquatorialMeanJ2000 via TransformFrame",
             "astropy": "Pure Rx(±ε₀) using erfa.obl06(J2000)",
             "libnova": "ln_get_equ_from_ecl / ln_get_ecl_from_equ at J2000 (Meeus obliquity)",
+            "anise": "Built-in J2000 ↔ ECLIPJ2000 obliquity rotation",
         }
         base["model_parity_class"] = "model-parity"
 
@@ -1444,6 +1471,9 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
         }
         base["model_parity_class"] = "model-mismatch"
 
+    if "models" in base:
+        base["models"].setdefault("anise", "Not available in ANISE adapter for this experiment")
+
     return base
 
 
@@ -1470,6 +1500,7 @@ def run_metadata():
         "git_shas": {
             "lab": get_git_sha(LAB_ROOT),
             "siderust": get_git_sha(LAB_ROOT / "siderust"),
+            "anise": get_git_sha(LAB_ROOT / "anise"),
             "erfa": get_git_sha(LAB_ROOT / "erfa"),
             "libnova": get_git_sha(LAB_ROOT / "libnova"),
         },
@@ -1738,10 +1769,10 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
     Run the frame_rotation_bpn experiment end-to-end.
 
     Reference: ERFA (IAU 2006/2000A BPN matrix)
-    Candidates: Siderust, Astropy, libnova
+    Candidates: Siderust, Astropy, libnova, anise
     """
     exp_name = "frame_rotation_bpn"
-    total_steps = 6 + (8 if run_perf else 0)  # gen + 4 adapters + accuracy + perf
+    total_steps = 7 + (5 if run_perf else 0)  # gen + 5 adapters + accuracy + perf
     step = 0
 
     progress(f"Starting experiment (N={n}, seed={seed})", exp_name, "start", total_steps, step)
@@ -1760,12 +1791,8 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
 
     # 2) Run adapters
     adapters = {}
-    adapter_list = [
-        ("erfa", [str(ERFA_BIN)], "reference"),
-        ("siderust", [str(SIDERUST_BIN)], "candidate"),
-        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)], "candidate"),
-        ("libnova", [str(LIBNOVA_BIN)], "candidate"),
-    ]
+    adapter_list = [("erfa", [str(ERFA_BIN)], "reference")]
+    adapter_list += [(lib, cmd, "candidate") for lib, cmd in candidate_adapters()]
 
     for lib, cmd, role in adapter_list:
         step += 1
@@ -1782,9 +1809,12 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
         return results
 
     meta = run_metadata()
-    for lib in ["siderust", "astropy", "libnova"]:
+    for lib in ["siderust", "astropy", "libnova", "anise"]:
         cand_data = adapters.get(lib)
         if cand_data is None:
+            continue
+        if isinstance(cand_data, dict) and cand_data.get("skipped"):
+            progress(f"{lib}: skipped ({cand_data.get('reason', 'no reason')})", exp_name, f"skip_{lib}")
             continue
 
         accuracy = compute_accuracy_metrics(
@@ -1827,11 +1857,7 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
             perf_epochs, perf_dirs, _ = generate_frame_rotation_inputs(perf_n, seed)
         perf_input = format_bpn_perf_input(perf_epochs, perf_dirs)
 
-        for lib, cmd in [
-            ("siderust", [str(SIDERUST_BIN)]),
-            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-            ("libnova", [str(LIBNOVA_BIN)]),
-        ]:
+        for lib, cmd in candidate_adapters():
             step += 1
             progress(f"Timing {lib} ({perf_rounds} rounds)...", exp_name, f"perf_{lib}", total_steps, step)
             perf_data = run_multi_sample_perf(cmd, perf_input, f"{lib}_perf", rounds=perf_rounds)
@@ -1863,7 +1889,7 @@ def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = T
     if accuracy_kwargs is None:
         accuracy_kwargs = {}
 
-    total_steps = 6 + (5 if run_perf else 0)
+    total_steps = 7 + (5 if run_perf else 0)
     step = 0
 
     progress(f"Starting experiment (N={n}, seed={seed})", exp_name, "start", total_steps, step)
@@ -1884,12 +1910,7 @@ def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = T
 
     # 2) Run adapters
     adapters = {}
-    adapter_list = [
-        ("erfa", [str(ERFA_BIN)]),
-        ("siderust", [str(SIDERUST_BIN)]),
-        ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-        ("libnova", [str(LIBNOVA_BIN)]),
-    ]
+    adapter_list = [("erfa", [str(ERFA_BIN)])] + candidate_adapters()
 
     for lib, cmd in adapter_list:
         step += 1
@@ -1907,7 +1928,7 @@ def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = T
         return results
 
     meta = run_metadata()
-    for lib in ["siderust", "astropy", "libnova"]:
+    for lib in ["siderust", "astropy", "libnova", "anise"]:
         cand_data = adapters.get(lib)
         if cand_data is None:
             continue
@@ -1951,11 +1972,7 @@ def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = T
         perf_inputs = input_gen_fn(perf_n, seed)  # Regenerate for perf_n
         perf_input = perf_fmt_fn(*perf_inputs) if not isinstance(perf_inputs, str) else perf_inputs
 
-        for lib, cmd in [
-            ("siderust", [str(SIDERUST_BIN)]),
-            ("astropy", [sys.executable, str(ASTROPY_SCRIPT)]),
-            ("libnova", [str(LIBNOVA_BIN)]),
-        ]:
+        for lib, cmd in candidate_adapters():
             step += 1
             progress(f"Timing {lib} ({perf_rounds} rounds)...", exp_name, f"perf_{lib}", total_steps, step)
             perf_data = run_multi_sample_perf(cmd, perf_input, f"{lib}_perf", rounds=perf_rounds)
@@ -2232,7 +2249,7 @@ def main():
     parser.add_argument("--ci", action="store_true",
                         help="CI mode: fewer rounds, smaller N for faster execution")
     parser.add_argument("--no-build", action="store_true",
-                        help="Skip automatic rebuild of siderust adapter")
+                        help="Skip automatic rebuild of Rust adapters (siderust/anise)")
     args = parser.parse_args()
 
     # CI mode overrides
@@ -2243,7 +2260,7 @@ def main():
             args.perf_rounds = 2
 
     if not args.no_build:
-        ensure_siderust_adapter_built()
+        ensure_rust_adapters_built()
 
     # Resolve which experiments to run (--experiments takes precedence)
     raw = args.experiments or args.experiment or "all"
