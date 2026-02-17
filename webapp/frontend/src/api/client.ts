@@ -7,6 +7,7 @@ import type {
   BenchmarkStatus,
   CompareResult,
   ExperimentResult,
+  PerformanceMatrixResponse,
   RunDetail,
   RunSummary,
 } from "./types";
@@ -54,6 +55,14 @@ export function fetchExperiment(
 
 export function reloadRuns(): Promise<{ status: string }> {
   return post<{ status: string }>("/runs/reload", {});
+}
+
+// ----- Performance Matrix ----- //
+
+export function fetchPerformanceMatrix(
+  runId: string
+): Promise<PerformanceMatrixResponse> {
+  return get<PerformanceMatrixResponse>(`/runs/${runId}/performance-matrix`);
 }
 
 // ----- Compare ----- //

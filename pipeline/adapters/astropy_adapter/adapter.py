@@ -691,6 +691,691 @@ def run_kepler_solver_perf(lines_iter):
     print()
 
 
+# -----------------------------------------------------------------------
+# NEW COORDINATE-TRANSFORM EXPERIMENTS
+# -----------------------------------------------------------------------
+
+def run_frame_bias(lines_iter):
+    """ICRS → EquatorialMeanJ2000 via erfa.bp06 bias matrix (rb)."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    cases = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_tt = float(parts[0])
+        vin = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vin = normalize3(vin)
+
+        rb, _rp, _rbp = erfa.bp06(2451545.0, 0.0)
+        vout = normalize3(rb @ vin)
+
+        vback = normalize3(rb.T @ vout)
+        closure_rad = ang_sep(vin, vback)
+
+        cases.append({
+            "jd_tt": jd_tt,
+            "input": vin.tolist(),
+            "output": vout.tolist(),
+            "closure_rad": closure_rad,
+        })
+
+    result = {
+        "experiment": "frame_bias",
+        "library": "astropy",
+        "model": "IAU_2006_bias (via erfa.bp06)",
+        "count": n,
+        "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_frame_bias_perf(lines_iter):
+    """Performance measurement for frame bias."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    jds = []
+    vecs = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jds.append(float(parts[0]))
+        v = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vecs.append(normalize3(v))
+
+    for i in range(min(n, 100)):
+        erfa.bp06(2451545.0, 0.0)
+
+    t0 = time.perf_counter_ns()
+    sink = np.zeros(3)
+    for i in range(n):
+        rb, _rp, _rbp = erfa.bp06(2451545.0, 0.0)
+        sink = rb @ vecs[i]
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "frame_bias_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink[0]),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_precession(lines_iter):
+    """EquatorialMeanJ2000 → EquatorialMeanOfDate via erfa.pmat06."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    cases = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_tt = float(parts[0])
+        vin = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vin = normalize3(vin)
+
+        rp = erfa.pmat06(2451545.0, jd_tt - 2451545.0)
+        vout = normalize3(rp @ vin)
+
+        vback = normalize3(rp.T @ vout)
+        closure_rad = ang_sep(vin, vback)
+
+        cases.append({
+            "jd_tt": jd_tt,
+            "input": vin.tolist(),
+            "output": vout.tolist(),
+            "closure_rad": closure_rad,
+        })
+
+    result = {
+        "experiment": "precession",
+        "library": "astropy",
+        "model": "IAU_2006_precession (via erfa.pmat06)",
+        "count": n,
+        "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_precession_perf(lines_iter):
+    """Performance measurement for precession matrix."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    jds = []
+    vecs = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jds.append(float(parts[0]))
+        v = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vecs.append(normalize3(v))
+
+    for i in range(min(n, 100)):
+        erfa.pmat06(2451545.0, jds[i] - 2451545.0)
+
+    t0 = time.perf_counter_ns()
+    sink = np.zeros(3)
+    for i in range(n):
+        rp = erfa.pmat06(2451545.0, jds[i] - 2451545.0)
+        sink = rp @ vecs[i]
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "precession_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink[0]),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_nutation(lines_iter):
+    """EquatorialMeanOfDate → EquatorialTrueOfDate via erfa.num06a."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    cases = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_tt = float(parts[0])
+        vin = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vin = normalize3(vin)
+
+        rn = erfa.num06a(2451545.0, jd_tt - 2451545.0)
+        vout = normalize3(rn @ vin)
+
+        vback = normalize3(rn.T @ vout)
+        closure_rad = ang_sep(vin, vback)
+
+        cases.append({
+            "jd_tt": jd_tt,
+            "input": vin.tolist(),
+            "output": vout.tolist(),
+            "closure_rad": closure_rad,
+        })
+
+    result = {
+        "experiment": "nutation",
+        "library": "astropy",
+        "model": "IAU_2006_2000A_nutation (via erfa.num06a)",
+        "count": n,
+        "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_nutation_perf(lines_iter):
+    """Performance measurement for nutation matrix."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    jds = []
+    vecs = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jds.append(float(parts[0]))
+        v = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vecs.append(normalize3(v))
+
+    for i in range(min(n, 100)):
+        erfa.num06a(2451545.0, jds[i] - 2451545.0)
+
+    t0 = time.perf_counter_ns()
+    sink = np.zeros(3)
+    for i in range(n):
+        rn = erfa.num06a(2451545.0, jds[i] - 2451545.0)
+        sink = rn @ vecs[i]
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "nutation_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink[0]),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_icrs_ecl_j2000(lines_iter):
+    """ICRS → EclipticMeanJ2000 via erfa.ecm06 at J2000."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    rm = erfa.ecm06(2451545.0, 0.0)
+
+    cases = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_tt = float(parts[0])
+        vin = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vin = normalize3(vin)
+
+        vout = normalize3(rm @ vin)
+        ecl_lon = math.atan2(vout[1], vout[0]) % (2 * math.pi)
+        ecl_lat = math.asin(np.clip(vout[2], -1.0, 1.0))
+
+        vback = normalize3(rm.T @ vout)
+        closure_rad = ang_sep(vin, vback)
+
+        cases.append({
+            "jd_tt": jd_tt,
+            "input": vin.tolist(),
+            "output": vout.tolist(),
+            "ecl_lon_rad": ecl_lon,
+            "ecl_lat_rad": ecl_lat,
+            "closure_rad": closure_rad,
+        })
+
+    result = {
+        "experiment": "icrs_ecl_j2000",
+        "library": "astropy",
+        "model": "IAU_2006_ecliptic_J2000 (via erfa.ecm06)",
+        "count": n,
+        "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_icrs_ecl_j2000_perf(lines_iter):
+    """Performance measurement for ICRS → Ecliptic J2000."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    vecs = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        v = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+        vecs.append(normalize3(v))
+
+    rm = erfa.ecm06(2451545.0, 0.0)
+
+    for i in range(min(n, 100)):
+        _ = rm @ vecs[i]
+
+    t0 = time.perf_counter_ns()
+    sink = np.zeros(3)
+    for i in range(n):
+        sink = rm @ vecs[i]
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "icrs_ecl_j2000_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink[0]),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_icrs_ecl_tod(lines_iter):
+    """ICRS → EclipticTrueOfDate via erfa.eqec06."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    cases = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_tt = float(parts[0])
+        ra_rad = float(parts[1])
+        dec_rad = float(parts[2])
+
+        date1 = 2451545.0
+        date2 = jd_tt - 2451545.0
+
+        ecl_lon, ecl_lat = erfa.eqec06(date1, date2, ra_rad, dec_rad)
+
+        ra_back, dec_back = erfa.eceq06(date1, date2, ecl_lon, ecl_lat)
+        v_in = np.array([math.cos(dec_rad)*math.cos(ra_rad),
+                         math.cos(dec_rad)*math.sin(ra_rad),
+                         math.sin(dec_rad)])
+        v_bk = np.array([math.cos(dec_back)*math.cos(ra_back),
+                         math.cos(dec_back)*math.sin(ra_back),
+                         math.sin(dec_back)])
+        closure_rad = ang_sep(v_in, v_bk)
+
+        cases.append({
+            "jd_tt": jd_tt,
+            "ra_rad": ra_rad,
+            "dec_rad": dec_rad,
+            "ecl_lon_rad": float(ecl_lon),
+            "ecl_lat_rad": float(ecl_lat),
+            "closure_rad": closure_rad,
+        })
+
+    result = {
+        "experiment": "icrs_ecl_tod",
+        "library": "astropy",
+        "model": "IAU_2006_ecliptic_of_date (via erfa.eqec06)",
+        "count": n,
+        "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_icrs_ecl_tod_perf(lines_iter):
+    """Performance measurement for ICRS → Ecliptic of date."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    jds = []
+    ras = []
+    decs = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jds.append(float(parts[0]))
+        ras.append(float(parts[1]))
+        decs.append(float(parts[2]))
+
+    for i in range(min(n, 100)):
+        erfa.eqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i])
+
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        ecl_lon, ecl_lat = erfa.eqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i])
+        sink += ecl_lon + ecl_lat
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "icrs_ecl_tod_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_horiz_to_equ(lines_iter):
+    """Horizontal → Equatorial via erfa.ae2hd + GAST."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    cases = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_ut1 = float(parts[0])
+        jd_tt = float(parts[1])
+        az_rad = float(parts[2])
+        alt_rad = float(parts[3])
+        obs_lon = float(parts[4])
+        obs_lat = float(parts[5])
+
+        ut1_hi, ut1_lo = 2451545.0, jd_ut1 - 2451545.0
+        tt_hi, tt_lo = 2451545.0, jd_tt - 2451545.0
+
+        gast = erfa.gst06a(ut1_hi, ut1_lo, tt_hi, tt_lo)
+        last = gast + obs_lon
+
+        ha, dec = erfa.ae2hd(az_rad, alt_rad, obs_lat)
+        ra = (last - ha) % (2 * math.pi)
+
+        # Closure
+        ha2 = last - ra
+        az2, alt2 = erfa.hd2ae(ha2, dec, obs_lat)
+        ha_back, dec_back = erfa.ae2hd(az2, alt2, obs_lat)
+        ra_back = (last - ha_back) % (2 * math.pi)
+
+        v_in = np.array([math.cos(dec)*math.cos(ra),
+                         math.cos(dec)*math.sin(ra),
+                         math.sin(dec)])
+        v_bk = np.array([math.cos(dec_back)*math.cos(ra_back),
+                         math.cos(dec_back)*math.sin(ra_back),
+                         math.sin(dec_back)])
+        closure_rad = ang_sep(v_in, v_bk)
+
+        cases.append({
+            "jd_ut1": jd_ut1,
+            "jd_tt": jd_tt,
+            "az_rad": az_rad,
+            "alt_rad": alt_rad,
+            "obs_lon_rad": obs_lon,
+            "obs_lat_rad": obs_lat,
+            "ra_rad": float(ra),
+            "dec_rad": float(dec),
+            "closure_rad": closure_rad,
+        })
+
+    result = {
+        "experiment": "horiz_to_equ",
+        "library": "astropy",
+        "model": "eraAe2hd_GAST (via erfa)",
+        "count": n,
+        "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_horiz_to_equ_perf(lines_iter):
+    """Performance measurement for horizontal → equatorial."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    params = []
+    for i in range(n):
+        parts = next(lines_iter).strip().split()
+        params.append((
+            float(parts[0]), float(parts[1]), float(parts[2]),
+            float(parts[3]), float(parts[4]), float(parts[5])
+        ))
+
+    for i in range(min(n, 100)):
+        jd_ut1, jd_tt, az, alt, lon, lat = params[i]
+        gast = erfa.gst06a(2451545.0, jd_ut1 - 2451545.0,
+                           2451545.0, jd_tt - 2451545.0)
+        erfa.ae2hd(az, alt, lat)
+
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        jd_ut1, jd_tt, az, alt, lon, lat = params[i]
+        gast = erfa.gst06a(2451545.0, jd_ut1 - 2451545.0,
+                           2451545.0, jd_tt - 2451545.0)
+        last = gast + lon
+        ha, dec = erfa.ae2hd(az, alt, lat)
+        ra = (last - ha) % (2 * math.pi)
+        sink += ra + dec
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": "horiz_to_equ_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+# ===================================================================
+# 13 NEW DIRECTION-VECTOR TRANSFORM EXPERIMENTS
+# Generic helpers for direction-vector accuracy & perf
+# ===================================================================
+
+def _run_dir_accuracy(exp_name, model, mat_fn, lines_iter):
+    """Generic direction-vector accuracy experiment using a rotation matrix function."""
+    n = int(next(lines_iter).strip())
+    cases = []
+    for _ in range(n):
+        parts = next(lines_iter).strip().split()
+        jd_tt = float(parts[0])
+        vin = normalize3(np.array([float(parts[1]), float(parts[2]), float(parts[3])]))
+        d1, d2 = 2451545.0, jd_tt - 2451545.0
+        mat = mat_fn(jd_tt, d1, d2)
+        vout = normalize3(mat @ vin)
+        vback = normalize3(mat.T @ vout)
+        closure_rad = ang_sep(vin, vback)
+        cases.append({
+            "jd_tt": jd_tt,
+            "input": vin.tolist(),
+            "output": vout.tolist(),
+            "closure_rad": closure_rad,
+        })
+    result = {
+        "experiment": exp_name, "library": "astropy",
+        "model": model, "count": n, "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def _run_dir_perf(exp_name, mat_fn, lines_iter):
+    """Generic direction-vector perf experiment."""
+    n = int(next(lines_iter).strip())
+    jds, vecs = [], []
+    for _ in range(n):
+        parts = next(lines_iter).strip().split()
+        jds.append(float(parts[0]))
+        vecs.append(normalize3(np.array([float(parts[1]), float(parts[2]), float(parts[3])])))
+    for i in range(min(n, 100)):
+        mat_fn(jds[i], 2451545.0, jds[i] - 2451545.0)
+    t0 = time.perf_counter_ns()
+    sink = np.zeros(3)
+    for i in range(n):
+        mat = mat_fn(jds[i], 2451545.0, jds[i] - 2451545.0)
+        sink = mat @ vecs[i]
+    elapsed_ns = time.perf_counter_ns() - t0
+    result = {
+        "experiment": f"{exp_name}_perf", "library": "astropy",
+        "count": n, "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink[0]),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def _get_erfa():
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+    return erfa
+
+
+# --- Matrix factory functions ---
+def _mat_inv_frame_bias(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rb, _rp, _rbp = erfa.bp06(2451545.0, 0.0)
+    return rb.T
+
+def _mat_inv_precession(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rp = erfa.pmat06(d1, d2)
+    return rp.T
+
+def _mat_inv_nutation(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rn = erfa.num06a(d1, d2)
+    return rn.T
+
+def _mat_inv_bpn(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rnpb = erfa.pnm06a(d1, d2)
+    return rnpb.T
+
+def _mat_inv_icrs_ecl_j2000(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rm = erfa.ecm06(2451545.0, 0.0)
+    return rm.T
+
+def _mat_obliquity(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    eps = erfa.obl06(2451545.0, 0.0)
+    c, s = np.cos(eps), np.sin(eps)
+    return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+
+def _mat_inv_obliquity(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    eps = erfa.obl06(2451545.0, 0.0)
+    c, s = np.cos(eps), np.sin(eps)
+    return np.array([[1, 0, 0], [0, c, s], [0, -s, c]])
+
+def _mat_bias_precession(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    _rb, _rp, rbp = erfa.bp06(d1, d2)
+    return rbp
+
+def _mat_inv_bias_precession(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    _rb, _rp, rbp = erfa.bp06(d1, d2)
+    return rbp.T
+
+def _mat_precession_nutation(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rp = erfa.pmat06(d1, d2)
+    rn = erfa.num06a(d1, d2)
+    return rn @ rp
+
+def _mat_inv_precession_nutation(jd_tt, d1, d2):
+    return _mat_precession_nutation(jd_tt, d1, d2).T
+
+def _mat_inv_icrs_ecl_tod(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rm = erfa.ecm06(d1, d2)
+    return rm.T
+
+def _mat_inv_equ_ecl(jd_tt, d1, d2):
+    erfa = _get_erfa()
+    rm = erfa.ecm06(d1, d2)
+    _rb, _rp, rbp = erfa.bp06(d1, d2)
+    return rbp @ rm.T
+
+
+# --- Experiment entry points ---
+def run_inv_frame_bias(lines_iter):       _run_dir_accuracy("inv_frame_bias",        "IAU_2006_inv_bias",       _mat_inv_frame_bias, lines_iter)
+def run_inv_frame_bias_perf(lines_iter):  _run_dir_perf("inv_frame_bias",        _mat_inv_frame_bias, lines_iter)
+def run_inv_precession(lines_iter):       _run_dir_accuracy("inv_precession",        "IAU_2006_inv_prec",       _mat_inv_precession, lines_iter)
+def run_inv_precession_perf(lines_iter):  _run_dir_perf("inv_precession",        _mat_inv_precession, lines_iter)
+def run_inv_nutation(lines_iter):         _run_dir_accuracy("inv_nutation",          "IAU_2000A_inv_nut",       _mat_inv_nutation, lines_iter)
+def run_inv_nutation_perf(lines_iter):    _run_dir_perf("inv_nutation",          _mat_inv_nutation, lines_iter)
+def run_inv_bpn(lines_iter):              _run_dir_accuracy("inv_bpn",               "IAU_2006_inv_bpn",        _mat_inv_bpn, lines_iter)
+def run_inv_bpn_perf(lines_iter):         _run_dir_perf("inv_bpn",               _mat_inv_bpn, lines_iter)
+def run_inv_icrs_ecl_j2000(lines_iter):   _run_dir_accuracy("inv_icrs_ecl_j2000",    "IAU_2006_inv_ecl_j2000",  _mat_inv_icrs_ecl_j2000, lines_iter)
+def run_inv_icrs_ecl_j2000_perf(lines_iter): _run_dir_perf("inv_icrs_ecl_j2000",    _mat_inv_icrs_ecl_j2000, lines_iter)
+def run_obliquity(lines_iter):            _run_dir_accuracy("obliquity",             "IAU_2006_obliquity",      _mat_obliquity, lines_iter)
+def run_obliquity_perf(lines_iter):       _run_dir_perf("obliquity",             _mat_obliquity, lines_iter)
+def run_inv_obliquity(lines_iter):        _run_dir_accuracy("inv_obliquity",         "IAU_2006_inv_obliq",      _mat_inv_obliquity, lines_iter)
+def run_inv_obliquity_perf(lines_iter):   _run_dir_perf("inv_obliquity",         _mat_inv_obliquity, lines_iter)
+def run_bias_precession(lines_iter):      _run_dir_accuracy("bias_precession",       "IAU_2006_bias_prec",      _mat_bias_precession, lines_iter)
+def run_bias_precession_perf(lines_iter): _run_dir_perf("bias_precession",       _mat_bias_precession, lines_iter)
+def run_inv_bias_precession(lines_iter):  _run_dir_accuracy("inv_bias_precession",   "IAU_2006_inv_bias_prec",  _mat_inv_bias_precession, lines_iter)
+def run_inv_bias_precession_perf(lines_iter): _run_dir_perf("inv_bias_precession",   _mat_inv_bias_precession, lines_iter)
+def run_precession_nutation(lines_iter):  _run_dir_accuracy("precession_nutation",   "IAU_2006_prec_nut",       _mat_precession_nutation, lines_iter)
+def run_precession_nutation_perf(lines_iter): _run_dir_perf("precession_nutation",   _mat_precession_nutation, lines_iter)
+def run_inv_precession_nutation(lines_iter): _run_dir_accuracy("inv_precession_nutation","IAU_2006_inv_prec_nut",_mat_inv_precession_nutation, lines_iter)
+def run_inv_precession_nutation_perf(lines_iter): _run_dir_perf("inv_precession_nutation",_mat_inv_precession_nutation, lines_iter)
+def run_inv_icrs_ecl_tod(lines_iter):     _run_dir_accuracy("inv_icrs_ecl_tod",      "IAU_2006_inv_ecl_tod",    _mat_inv_icrs_ecl_tod, lines_iter)
+def run_inv_icrs_ecl_tod_perf(lines_iter):_run_dir_perf("inv_icrs_ecl_tod",      _mat_inv_icrs_ecl_tod, lines_iter)
+def run_inv_equ_ecl(lines_iter):          _run_dir_accuracy("inv_equ_ecl",           "IAU_2006_inv_equ_ecl",    _mat_inv_equ_ecl, lines_iter)
+def run_inv_equ_ecl_perf(lines_iter):     _run_dir_perf("inv_equ_ecl",           _mat_inv_equ_ecl, lines_iter)
+
+
 def main():
     lines_iter = iter(sys.stdin)
     experiment = next(lines_iter).strip()
@@ -710,6 +1395,45 @@ def main():
         "solar_position_perf": run_solar_position_perf,
         "lunar_position_perf": run_lunar_position_perf,
         "kepler_solver_perf": run_kepler_solver_perf,
+        "frame_bias": run_frame_bias,
+        "frame_bias_perf": run_frame_bias_perf,
+        "precession": run_precession,
+        "precession_perf": run_precession_perf,
+        "nutation": run_nutation,
+        "nutation_perf": run_nutation_perf,
+        "icrs_ecl_j2000": run_icrs_ecl_j2000,
+        "icrs_ecl_j2000_perf": run_icrs_ecl_j2000_perf,
+        "icrs_ecl_tod": run_icrs_ecl_tod,
+        "icrs_ecl_tod_perf": run_icrs_ecl_tod_perf,
+        "horiz_to_equ": run_horiz_to_equ,
+        "horiz_to_equ_perf": run_horiz_to_equ_perf,
+        # 13 new matrix experiments
+        "inv_frame_bias": run_inv_frame_bias,
+        "inv_frame_bias_perf": run_inv_frame_bias_perf,
+        "inv_precession": run_inv_precession,
+        "inv_precession_perf": run_inv_precession_perf,
+        "inv_nutation": run_inv_nutation,
+        "inv_nutation_perf": run_inv_nutation_perf,
+        "inv_bpn": run_inv_bpn,
+        "inv_bpn_perf": run_inv_bpn_perf,
+        "inv_icrs_ecl_j2000": run_inv_icrs_ecl_j2000,
+        "inv_icrs_ecl_j2000_perf": run_inv_icrs_ecl_j2000_perf,
+        "obliquity": run_obliquity,
+        "obliquity_perf": run_obliquity_perf,
+        "inv_obliquity": run_inv_obliquity,
+        "inv_obliquity_perf": run_inv_obliquity_perf,
+        "bias_precession": run_bias_precession,
+        "bias_precession_perf": run_bias_precession_perf,
+        "inv_bias_precession": run_inv_bias_precession,
+        "inv_bias_precession_perf": run_inv_bias_precession_perf,
+        "precession_nutation": run_precession_nutation,
+        "precession_nutation_perf": run_precession_nutation_perf,
+        "inv_precession_nutation": run_inv_precession_nutation,
+        "inv_precession_nutation_perf": run_inv_precession_nutation_perf,
+        "inv_icrs_ecl_tod": run_inv_icrs_ecl_tod,
+        "inv_icrs_ecl_tod_perf": run_inv_icrs_ecl_tod_perf,
+        "inv_equ_ecl": run_inv_equ_ecl,
+        "inv_equ_ecl_perf": run_inv_equ_ecl_perf,
     }
 
     if experiment not in dispatch:

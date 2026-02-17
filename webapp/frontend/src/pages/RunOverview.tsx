@@ -12,7 +12,7 @@
 
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Trophy, Zap, Target, Scale } from "lucide-react";
+import { ArrowLeft, Trophy, Zap, Target, Scale, Grid3X3 } from "lucide-react";
 import { fetchRun } from "../api/client";
 import { analyzeRun, libColor } from "../utils/analytics";
 import Header from "../components/layout/Header";
@@ -68,13 +68,22 @@ export default function RunOverview() {
         title={`Run ${run.id}`}
         subtitle={`${run.timestamp ?? ""} \u2014 ${run.machine ?? "unknown machine"}`}
         actions={
-          <Link
-            to="/"
-            className="flex items-center gap-2 rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            All Runs
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/runs/${runId}/performance-matrix`}
+              className="flex items-center gap-2 rounded-lg bg-orange-700/30 border border-orange-600/40 px-4 py-2 text-sm text-orange-200 hover:bg-orange-700/50"
+            >
+              <Grid3X3 className="h-4 w-4" />
+              Performance Matrix
+            </Link>
+            <Link
+              to="/"
+              className="flex items-center gap-2 rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              All Runs
+            </Link>
+          </div>
         }
       />
 

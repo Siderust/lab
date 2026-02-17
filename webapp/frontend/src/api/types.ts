@@ -148,6 +148,43 @@ export interface BenchmarkStatus {
   progress_pct: number | null;
 }
 
+// ─── Performance Matrix (2D FROM×TO grid) ────────────────────────────
+
+export type MatrixCellStatus =
+  | "available"
+  | "skipped"
+  | "no_data"
+  | "no_experiment"
+  | "not_implemented";
+
+export interface PerfMatrixCell {
+  status: MatrixCellStatus;
+  experiment?: string;
+  siderust_ns?: number;
+  other_ns?: number;
+  speedup?: number;
+}
+
+export interface AccuracyMatrixCell {
+  status: MatrixCellStatus;
+  experiment?: string;
+  p50_mas?: number;
+  p99_mas?: number;
+  max_mas?: number;
+  metric_type?: string;
+}
+
+export interface PerformanceMatrixResponse {
+  run_id: string;
+  frames: string[];
+  core_frames: string[];
+  extended_frames: string[];
+  experiment_map: Record<string, { from: string; to: string }>;
+  cell_experiment_map: Record<string, string>;
+  perf_matrix: Record<string, Record<string, PerfMatrixCell>>;
+  accuracy_matrix: Record<string, Record<string, AccuracyMatrixCell>>;
+}
+
 /** Consistent color mapping for libraries. */
 export const LIBRARY_COLORS: Record<string, string> = {
   erfa: "#3b82f6",       // blue

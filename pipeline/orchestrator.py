@@ -125,6 +125,124 @@ EXPERIMENT_DESCRIPTIONS = {
         "interpret": "Lower residual = better convergence. Libnova's bisection method converges "
                      "to ~1e-6 deg, while Newton-Raphson methods reach ~1e-15 rad.",
     },
+    "frame_bias": {
+        "title": "Frame Bias (ICRS → Mean J2000)",
+        "what": "Applies the ICRS-to-mean-J2000 frame bias rotation to a direction vector. "
+                "This isolates the ~17 mas frame bias from precession/nutation.",
+        "why": "Frame bias is a small but constant rotation. Testing it separately verifies "
+               "the bias component of the full BPN matrix.",
+        "units": "Angular error in mas (milliarcseconds).",
+        "interpret": "All libraries implementing IAU frame bias should agree to sub-mas level.",
+    },
+    "precession": {
+        "title": "Precession (Mean J2000 → Mean of Date)",
+        "what": "Applies the IAU precession matrix to rotate from mean J2000 to mean equator "
+                "and equinox of date.",
+        "why": "Precession is the largest component of the BPN matrix. This isolates it from "
+               "nutation and frame bias to pinpoint model accuracy.",
+        "units": "Angular error in mas (milliarcseconds).",
+        "interpret": "ERFA/Astropy use IAU 2006 precession. Siderust uses the same model. "
+                     "libnova uses Meeus — expect arcsec-level differences.",
+    },
+    "nutation": {
+        "title": "Nutation (Mean of Date → True of Date)",
+        "what": "Applies the nutation matrix to rotate from mean equator/equinox of date "
+                "to true equator/equinox of date.",
+        "why": "Nutation oscillates ±9 arcsec. Isolating it reveals IAU 2000A vs 2000B differences.",
+        "units": "Angular error in mas (milliarcseconds).",
+        "interpret": "ERFA/Astropy use IAU 2000A (1365 terms). Siderust uses IAU 2000B (77 terms). "
+                     "libnova uses IAU 1980 (69 terms). Expect ~1 mas difference (2000A vs 2000B).",
+    },
+    "icrs_ecl_j2000": {
+        "title": "ICRS → Ecliptic J2000",
+        "what": "Transforms an ICRS direction vector to ecliptic coordinates at the J2000 epoch. "
+                "This is a time-independent rotation by the mean obliquity at J2000.",
+        "why": "Tests the obliquity constant and ecliptic frame rotation without time-dependent terms.",
+        "units": "Angular error in mas (milliarcseconds).",
+        "interpret": "Time-independent transform — all IAU-based libraries should agree to µas level.",
+    },
+    "icrs_ecl_tod": {
+        "title": "ICRS → Ecliptic of Date",
+        "what": "Transforms equatorial RA/Dec to ecliptic longitude/latitude at the date of observation. "
+                "Combines precession, nutation, and obliquity.",
+        "why": "End-to-end ecliptic transform that exercises the full precession-nutation chain plus obliquity.",
+        "units": "Angular separation in arcseconds.",
+        "interpret": "ERFA/Astropy share IAU 2006 obliquity. libnova uses Meeus — expect arcsec differences.",
+    },
+    "horiz_to_equ": {
+        "title": "Horizontal → Equatorial (AltAz → RA/Dec)",
+        "what": "Converts horizontal (azimuth, altitude) coordinates to equatorial RA/Dec via hour angle "
+                "and GAST computation.",
+        "why": "Reverse of equ_horizontal. Tests the inverse spherical trig path and GAST model.",
+        "units": "Angular separation in arcseconds.",
+        "interpret": "Same spherical trig across all libraries. Differences arise from GAST model only.",
+    },
+    # 13 new matrix experiments (inverse / composed / obliquity transforms)
+    "inv_frame_bias": {
+        "title": "Inverse Frame Bias (Mean J2000 → ICRS)",
+        "what": "Reverses the ICRS-to-J2000 frame bias by applying the transposed bias matrix.",
+        "units": "Angular error in mas.", "interpret": "All IAU-based libraries agree to sub-mas.",
+    },
+    "inv_precession": {
+        "title": "Inverse Precession (Mean of Date → Mean J2000)",
+        "what": "Reverses IAU precession by applying the transposed precession matrix.",
+        "units": "Angular error in mas.", "interpret": "libnova uses Meeus — arcsec differences expected.",
+    },
+    "inv_nutation": {
+        "title": "Inverse Nutation (True of Date → Mean of Date)",
+        "what": "Reverses nutation by transposing the nutation matrix (or by approximate correction in libnova).",
+        "units": "Angular error in mas.", "interpret": "libnova uses approximate ΔRA/ΔDec subtraction.",
+    },
+    "inv_bpn": {
+        "title": "Inverse BPN (True of Date → ICRS)",
+        "what": "Reverses the full BPN chain (transpose of eraPnm06a matrix).",
+        "units": "Angular error in mas.", "interpret": "libnova skipped (no frame bias concept).",
+    },
+    "inv_icrs_ecl_j2000": {
+        "title": "Ecliptic J2000 → ICRS",
+        "what": "Reverse of ICRS → EclipticMeanJ2000 via transposed ecliptic rotation matrix.",
+        "units": "Angular error in mas.", "interpret": "Time-independent — µas agreement expected.",
+    },
+    "obliquity": {
+        "title": "Obliquity (Ecliptic J2000 → Eq Mean J2000)",
+        "what": "Pure obliquity rotation from ecliptic to equatorial at J2000 (Rx(+ε₀)).",
+        "units": "Angular error in mas.", "interpret": "Time-independent obliquity constant.",
+    },
+    "inv_obliquity": {
+        "title": "Inverse Obliquity (Eq Mean J2000 → Ecliptic J2000)",
+        "what": "Pure obliquity rotation from equatorial to ecliptic at J2000 (Rx(−ε₀)).",
+        "units": "Angular error in mas.", "interpret": "Time-independent obliquity constant.",
+    },
+    "bias_precession": {
+        "title": "Bias + Precession (ICRS → Mean of Date)",
+        "what": "Combined frame bias + precession: ICRS → EquatorialMeanOfDate.",
+        "units": "Angular error in mas.", "interpret": "libnova skipped (no frame bias).",
+    },
+    "inv_bias_precession": {
+        "title": "Inverse Bias+Precession (Mean of Date → ICRS)",
+        "what": "Reverse of ICRS → MeanOfDate via transposed RBP matrix.",
+        "units": "Angular error in mas.", "interpret": "libnova skipped (no frame bias).",
+    },
+    "precession_nutation": {
+        "title": "Precession + Nutation (Mean J2000 → True of Date)",
+        "what": "Combined precession + nutation: EquatorialMeanJ2000 → EquatorialTrueOfDate.",
+        "units": "Angular error in mas.", "interpret": "libnova uses Meeus prec + IAU 1980 nut.",
+    },
+    "inv_precession_nutation": {
+        "title": "Inverse Prec+Nut (True of Date → Mean J2000)",
+        "what": "Reverse of EqMeanJ2000 → EqTrueOfDate via transposed composed matrix.",
+        "units": "Angular error in mas.", "interpret": "libnova uses approximate inverses.",
+    },
+    "inv_icrs_ecl_tod": {
+        "title": "Ecliptic of Date → ICRS",
+        "what": "Reverse of ICRS → EclipticTrueOfDate (transpose of eraEcm06).",
+        "units": "Angular error in mas.", "interpret": "libnova chains ecl→eq(date)→prec→J2000.",
+    },
+    "inv_equ_ecl": {
+        "title": "Ecliptic of Date → Eq Mean of Date",
+        "what": "Reverse of EqMeanOfDate → EclipticTrueOfDate.",
+        "units": "Angular error in mas.", "interpret": "libnova uses ln_get_equ_from_ecl at date.",
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -396,6 +514,37 @@ def generate_kepler_inputs(n: int, seed: int):
     return M_arr, e_arr
 
 
+def generate_direction_vector_inputs(n: int, seed: int):
+    """Generate random JD TT epochs + unit direction vectors for frame transform tests."""
+    rng = np.random.default_rng(seed)
+    # 100-year range centered on J2000 (JD 2451545.0 = 2000-01-01.5 TT)
+    jd_tt = rng.uniform(2451545.0, 2488070.0, size=n)
+    # Random unit vectors on the sphere
+    phi = rng.uniform(0, 2 * np.pi, size=n)
+    cos_theta = rng.uniform(-1, 1, size=n)
+    sin_theta = np.sqrt(1 - cos_theta**2)
+    directions = np.column_stack([
+        sin_theta * np.cos(phi),
+        sin_theta * np.sin(phi),
+        cos_theta,
+    ])
+    return jd_tt, directions
+
+
+def generate_horiz_to_equ_inputs(n: int, seed: int):
+    """Generate random horizontal coordinates + observer locations for horiz_to_equ tests."""
+    rng = np.random.default_rng(seed + 7)  # offset seed to avoid duplicate data
+    jd_tt = rng.uniform(2451545.0, 2488070.0, size=n)
+    jd_ut1 = jd_tt - 69.184 / 86400.0  # simplified UT1 ≈ TT - 69.184s
+    # Azimuth 0..2π, altitude 5°..89° (avoid horizon and zenith singularities)
+    az = rng.uniform(0, 2 * np.pi, size=n)
+    alt = rng.uniform(np.radians(5), np.radians(89), size=n)
+    # Random observer locations
+    obs_lon = rng.uniform(-np.pi, np.pi, size=n)
+    obs_lat = np.arcsin(rng.uniform(-1.0, 1.0, size=n))
+    return jd_ut1, jd_tt, az, alt, obs_lon, obs_lat
+
+
 # ---------------------------------------------------------------------------
 # Adapter runners
 # ---------------------------------------------------------------------------
@@ -610,6 +759,96 @@ def format_kepler_input(M_arr, e_arr):
     lines = ["kepler_solver", str(len(M_arr))]
     for m, e in zip(M_arr, e_arr):
         lines.append(f"{m:.17e} {e:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+# --- Direction-vector format helpers (frame_bias, precession, nutation, icrs_ecl_j2000) ---
+
+def _format_direction_vector_input(exp_name, epochs, directions):
+    """Generic formatter for direction-vector experiments."""
+    lines = [exp_name, str(len(epochs))]
+    for jd, d in zip(epochs, directions):
+        lines.append(f"{jd:.15f} {d[0]:.17e} {d[1]:.17e} {d[2]:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_frame_bias_input(epochs, directions):
+    return _format_direction_vector_input("frame_bias", epochs, directions)
+
+def format_frame_bias_perf_input(epochs, directions):
+    return _format_direction_vector_input("frame_bias_perf", epochs, directions)
+
+def format_precession_input(epochs, directions):
+    return _format_direction_vector_input("precession", epochs, directions)
+
+def format_precession_perf_input(epochs, directions):
+    return _format_direction_vector_input("precession_perf", epochs, directions)
+
+def format_nutation_input(epochs, directions):
+    return _format_direction_vector_input("nutation", epochs, directions)
+
+def format_nutation_perf_input(epochs, directions):
+    return _format_direction_vector_input("nutation_perf", epochs, directions)
+
+def format_icrs_ecl_j2000_input(epochs, directions):
+    return _format_direction_vector_input("icrs_ecl_j2000", epochs, directions)
+
+def format_icrs_ecl_j2000_perf_input(epochs, directions):
+    return _format_direction_vector_input("icrs_ecl_j2000_perf", epochs, directions)
+
+# 13 new experiments — all use direction-vector format
+def _make_dir_format_pair(exp_name):
+    """Factory for format functions for direction-vector experiments."""
+    def fmt(epochs, directions):
+        return _format_direction_vector_input(exp_name, epochs, directions)
+    def fmt_perf(epochs, directions):
+        return _format_direction_vector_input(f"{exp_name}_perf", epochs, directions)
+    return fmt, fmt_perf
+
+format_inv_frame_bias_input, format_inv_frame_bias_perf_input = _make_dir_format_pair("inv_frame_bias")
+format_inv_precession_input, format_inv_precession_perf_input = _make_dir_format_pair("inv_precession")
+format_inv_nutation_input, format_inv_nutation_perf_input = _make_dir_format_pair("inv_nutation")
+format_inv_bpn_input, format_inv_bpn_perf_input = _make_dir_format_pair("inv_bpn")
+format_inv_icrs_ecl_j2000_input, format_inv_icrs_ecl_j2000_perf_input = _make_dir_format_pair("inv_icrs_ecl_j2000")
+format_obliquity_input, format_obliquity_perf_input = _make_dir_format_pair("obliquity")
+format_inv_obliquity_input, format_inv_obliquity_perf_input = _make_dir_format_pair("inv_obliquity")
+format_bias_precession_input, format_bias_precession_perf_input = _make_dir_format_pair("bias_precession")
+format_inv_bias_precession_input, format_inv_bias_precession_perf_input = _make_dir_format_pair("inv_bias_precession")
+format_precession_nutation_input, format_precession_nutation_perf_input = _make_dir_format_pair("precession_nutation")
+format_inv_precession_nutation_input, format_inv_precession_nutation_perf_input = _make_dir_format_pair("inv_precession_nutation")
+format_inv_icrs_ecl_tod_dir_input, format_inv_icrs_ecl_tod_dir_perf_input = _make_dir_format_pair("inv_icrs_ecl_tod")
+format_inv_equ_ecl_dir_input, format_inv_equ_ecl_dir_perf_input = _make_dir_format_pair("inv_equ_ecl")
+
+
+def format_icrs_ecl_tod_input(epochs, ra, dec):
+    """Format input for icrs_ecl_tod experiment: jd_tt ra dec per line."""
+    lines = ["icrs_ecl_tod", str(len(epochs))]
+    for jd, r, d in zip(epochs, ra, dec):
+        lines.append(f"{jd:.15f} {r:.17e} {d:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_icrs_ecl_tod_perf_input(epochs, ra, dec):
+    """Format input for icrs_ecl_tod performance experiment."""
+    lines = ["icrs_ecl_tod_perf", str(len(epochs))]
+    for jd, r, d in zip(epochs, ra, dec):
+        lines.append(f"{jd:.15f} {r:.17e} {d:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_horiz_to_equ_input(jd_ut1, jd_tt, az, alt, lon, lat):
+    """Format input for horiz_to_equ experiment: jd_ut1 jd_tt az alt lon lat per line."""
+    lines = ["horiz_to_equ", str(len(jd_ut1))]
+    for u, t, a, al, lo, la in zip(jd_ut1, jd_tt, az, alt, lon, lat):
+        lines.append(f"{u:.15f} {t:.15f} {a:.17e} {al:.17e} {lo:.17e} {la:.17e}")
+    return "\n".join(lines) + "\n"
+
+
+def format_horiz_to_equ_perf_input(jd_ut1, jd_tt, az, alt, lon, lat):
+    """Format input for horiz_to_equ performance experiment."""
+    lines = ["horiz_to_equ_perf", str(len(jd_ut1))]
+    for u, t, a, al, lo, la in zip(jd_ut1, jd_tt, az, alt, lon, lat):
+        lines.append(f"{u:.15f} {t:.15f} {a:.17e} {al:.17e} {lo:.17e} {la:.17e}")
     return "\n".join(lines) + "\n"
 
 
@@ -1027,6 +1266,184 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
             "libnova uses a bisection method with lower convergence tolerance."
         )
 
+    elif experiment == "frame_bias":
+        base["models"] = {
+            "erfa": "IAU 2006 frame bias matrix component from eraBp06",
+            "siderust": "IERS 2003 frame bias via frame rotation provider (ICRS → EquatorialMeanJ2000)",
+            "astropy": "IAU 2006 frame bias via bundled ERFA (erfa.bp06)",
+            "libnova": "Not available (no frame bias concept in libnova)",
+        }
+        base["model_parity_class"] = "model-parity"
+        base["accuracy_interpretation"] = "accuracy vs ERFA reference (IAU frame bias is a fixed rotation)"
+        base["note"] = (
+            "Frame bias is a small (~17 mas) time-independent rotation between ICRS and mean J2000. "
+            "libnova has no equivalent — its results are skipped."
+        )
+
+    elif experiment == "precession":
+        base["models"] = {
+            "erfa": "IAU 2006 precession matrix from eraPmat06",
+            "siderust": "IAU 2006 precession via frame rotation provider (EquatorialMeanJ2000 → EquatorialMeanOfDate)",
+            "astropy": "IAU 2006 precession via bundled ERFA (erfa.pmat06)",
+            "libnova": "Meeus precession (ζ,z,θ Equ 20.3) via ln_get_equ_prec2",
+        }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (libnova uses Meeus model)"
+        base["note"] = (
+            "ERFA, Astropy, and Siderust all use IAU 2006 precession. "
+            "libnova uses Meeus precession formulae — expect arcsec-level differences."
+        )
+
+    elif experiment == "nutation":
+        base["models"] = {
+            "erfa": "IAU 2000A nutation (1365 terms) via eraNum06a",
+            "siderust": "IAU 2000B nutation (77 terms) via frame rotation provider",
+            "astropy": "IAU 2000A nutation via bundled ERFA (erfa.num06a)",
+            "libnova": "IAU 1980 nutation (69 terms) via ln_get_equ_nut / ln_nutation",
+        }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (nutation models differ in term count)"
+        base["note"] = (
+            "IAU 2000A (ERFA/Astropy) has 1365 terms, 2000B (Siderust) has 77 terms (~1 mas difference), "
+            "IAU 1980 (libnova) has 69 terms (~tens of mas difference)."
+        )
+
+    elif experiment == "icrs_ecl_j2000":
+        base["models"] = {
+            "erfa": "IAU 2006 ecliptic rotation at J2000 epoch via eraEcm06",
+            "siderust": "ICRS → EclipticMeanJ2000 via frame rotation (mean obliquity at J2000)",
+            "astropy": "IAU 2006 ecliptic rotation via bundled ERFA (erfa.ecm06)",
+            "libnova": "Meeus obliquity (Eq 22.2) applied at J2000 epoch",
+        }
+        base["model_parity_class"] = "model-parity"
+        base["accuracy_interpretation"] = "accuracy vs ERFA reference (time-independent obliquity)"
+        base["note"] = (
+            "Time-independent rotation by the mean obliquity at J2000. "
+            "All IAU-based libraries should agree to µas level. "
+            "libnova uses Meeus obliquity which is close but not identical."
+        )
+
+    elif experiment == "icrs_ecl_tod":
+        base["models"] = {
+            "erfa": "IAU 2006 equatorial → ecliptic of date via eraEqec06",
+            "siderust": "ICRS → ecliptic of date via DirectionAstroExt::to_ecliptic_of_date",
+            "astropy": "IAU 2006 equatorial → ecliptic via bundled ERFA (erfa.eqec06)",
+            "libnova": "Meeus obliquity (Eq 22.2) via ln_get_ecl_from_equ",
+        }
+        base["model_parity_class"] = "model-mismatch"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (libnova Meeus obliquity differs)"
+        base["note"] = (
+            "Similar to equ_ecl but explicitly identified as ICRS → ecliptic-of-date transform. "
+            "ERFA/Astropy share IAU 2006 obliquity model. libnova uses Meeus."
+        )
+
+    elif experiment == "horiz_to_equ":
+        base["models"] = {
+            "erfa": "Spherical trig via eraAe2hd; GAST via eraGst06a; no refraction",
+            "siderust": "Spherical trig via FromHorizontal::to_equatorial; GAST IAU 2006",
+            "astropy": "eraAe2hd via bundled ERFA; GAST via eraGst06a",
+            "libnova": "ln_get_equ_from_hrz; convention fix: az = (input_az - 180) % 360",
+        }
+        base["model_parity_class"] = "model-parity"
+        base["accuracy_interpretation"] = "accuracy vs ERFA reference (same spherical trig model)"
+        base["note"] = (
+            "Inverse of equ_horizontal. Same spherical trig, same GAST dependencies. "
+            "Azimuth convention: ERFA 0°=North CW; libnova 0°=South. "
+            "No atmospheric refraction applied."
+        )
+        base["refraction"] = "disabled"
+
+    # 13 new matrix experiments — alignment checklists
+    elif experiment in ("inv_frame_bias",):
+        base["models"] = {
+            "erfa": "Transpose of IAU 2006 frame bias matrix (eraBp06 → rb^T)",
+            "siderust": "EquatorialMeanJ2000 → ICRS via frame rotation provider inverse",
+            "astropy": "Transpose of IAU 2006 frame bias via bundled ERFA",
+            "libnova": "Not available (no frame bias concept)",
+        }
+        base["model_parity_class"] = "model-parity"
+
+    elif experiment in ("inv_precession",):
+        base["models"] = {
+            "erfa": "Transpose of IAU 2006 precession matrix (eraPmat06 → rp^T)",
+            "siderust": "EquatorialMeanOfDate → EquatorialMeanJ2000 via frame rotation inverse",
+            "astropy": "Transpose of IAU 2006 precession via bundled ERFA",
+            "libnova": "Meeus inverse precession via ln_get_equ_prec2(date→J2000)",
+        }
+        base["model_parity_class"] = "model-mismatch"
+
+    elif experiment in ("inv_nutation",):
+        base["models"] = {
+            "erfa": "Transpose of IAU 2000A nutation matrix (eraNum06a → rn^T)",
+            "siderust": "EquatorialTrueOfDate → EquatorialMeanOfDate via frame rotation inverse",
+            "astropy": "Transpose of IAU 2000A nutation via bundled ERFA",
+            "libnova": "Approximate inverse via ΔRA/ΔDec subtraction (IAU 1980)",
+        }
+        base["model_parity_class"] = "model-mismatch"
+
+    elif experiment in ("inv_bpn",):
+        base["models"] = {
+            "erfa": "Transpose of IAU 2006 BPN matrix (eraPnm06a → rnpb^T)",
+            "siderust": "EquatorialTrueOfDate → ICRS via frame rotation inverse",
+            "astropy": "Transpose of IAU 2006 BPN via bundled ERFA",
+            "libnova": "Not available (no ICRS/frame bias concept)",
+        }
+        base["model_parity_class"] = "model-mismatch"
+
+    elif experiment in ("inv_icrs_ecl_j2000",):
+        base["models"] = {
+            "erfa": "Transpose of eraEcm06(J2000) matrix",
+            "siderust": "EclipticMeanJ2000 → ICRS via TransformFrame inverse",
+            "astropy": "Transpose of erfa.ecm06(J2000)",
+            "libnova": "ln_get_equ_from_ecl at J2000 (Meeus obliquity)",
+        }
+        base["model_parity_class"] = "model-parity"
+
+    elif experiment in ("obliquity", "inv_obliquity"):
+        base["models"] = {
+            "erfa": "Pure Rx(±ε₀) rotation using eraObl06(J2000)",
+            "siderust": "EclipticMeanJ2000 ↔ EquatorialMeanJ2000 via TransformFrame",
+            "astropy": "Pure Rx(±ε₀) using erfa.obl06(J2000)",
+            "libnova": "ln_get_equ_from_ecl / ln_get_ecl_from_equ at J2000 (Meeus obliquity)",
+        }
+        base["model_parity_class"] = "model-parity"
+
+    elif experiment in ("bias_precession", "inv_bias_precession"):
+        base["models"] = {
+            "erfa": "IAU 2006 bias+precession product (eraBp06 → rbp / rbp^T)",
+            "siderust": "ICRS ↔ EquatorialMeanOfDate via composed frame rotation",
+            "astropy": "IAU 2006 bias+precession via bundled ERFA",
+            "libnova": "Not available (no frame bias concept)",
+        }
+        base["model_parity_class"] = "model-mismatch"
+
+    elif experiment in ("precession_nutation", "inv_precession_nutation"):
+        base["models"] = {
+            "erfa": "N×P composed matrix (eraPmat06 × eraNum06a / transpose)",
+            "siderust": "EquatorialMeanJ2000 ↔ EquatorialTrueOfDate via frame rotation",
+            "astropy": "N×P composed via bundled ERFA",
+            "libnova": "ln_get_equ_prec + ln_get_equ_nut sequenced / approximate inverse",
+        }
+        base["model_parity_class"] = "model-mismatch"
+
+    elif experiment in ("inv_icrs_ecl_tod",):
+        base["models"] = {
+            "erfa": "Transpose of eraEcm06(date) matrix",
+            "siderust": "EclipticTrueOfDate → ICRS via FromEclipticTrueOfDate::to_icrs",
+            "astropy": "Transpose of erfa.ecm06(date)",
+            "libnova": "ln_get_equ_from_ecl(date) + ln_get_equ_prec2(date→J2000)",
+        }
+        base["model_parity_class"] = "model-mismatch"
+
+    elif experiment in ("inv_equ_ecl",):
+        base["models"] = {
+            "erfa": "RBP × ECM06^T composed matrix",
+            "siderust": "EclipticTrueOfDate → EquatorialMeanOfDate via FromEclipticTrueOfDate",
+            "astropy": "rbp × ecm06^T composed via bundled ERFA",
+            "libnova": "ln_get_equ_from_ecl at date (mean-of-date output)",
+        }
+        base["model_parity_class"] = "model-mismatch"
+
     return base
 
 
@@ -1181,11 +1598,52 @@ def generate_summary_table(all_results: list) -> str:
         lines.append("")
 
     # --- Angular experiments (equ_ecl, equ_horizontal, solar_position, lunar_position) ---
+    # --- Direction-vector transform experiments (BPN-style metrics) ---
+    for exp_name, title in [
+        ("frame_bias", "Frame Bias (ICRS → Mean J2000)"),
+        ("precession", "Precession (Mean J2000 → Mean of Date)"),
+        ("nutation", "Nutation (Mean of Date → True of Date)"),
+        ("icrs_ecl_j2000", "ICRS → Ecliptic J2000"),
+    ]:
+        exp_results = [r for r in all_results if r.get("experiment") == exp_name]
+        if not exp_results:
+            continue
+
+        lines.append(f"### {title}")
+        lines.append("")
+        lines.append("| Library | Ang p50 (mas) | Ang p99 (mas) | Ang max (mas) | Closure p99 (rad) | Perf (ns/op) | Speedup vs ref |")
+        lines.append("|---------|---------------|---------------|---------------|-------------------|--------------|----------------|")
+
+        for r in exp_results:
+            lib = r.get("candidate_library", "?")
+            acc = r.get("accuracy", {})
+            ang = acc.get("angular_error_mas", {})
+            clo = acc.get("closure_error_rad", {})
+            perf = r.get("performance", {})
+            ref_perf = r.get("reference_performance", {})
+            speedup = "—"
+            if perf.get("per_op_ns") and ref_perf.get("per_op_ns"):
+                speedup = f"{ref_perf['per_op_ns'] / perf['per_op_ns']:.1f}×"
+
+            lines.append(
+                f"| {lib} "
+                f"| {fmt(ang.get('p50'))} "
+                f"| {fmt(ang.get('p99'))} "
+                f"| {fmt(ang.get('max'))} "
+                f"| {fmt(clo.get('p99'), 2)} "
+                f"| {fmt(perf.get('per_op_ns'), 1)} "
+                f"| {speedup} |"
+            )
+        lines.append("")
+
+    # --- Angular experiments (equ_ecl, equ_horizontal, solar_position, etc.) ---
     for exp_name, title in [
         ("equ_ecl", "Equatorial ↔ Ecliptic Transform"),
         ("equ_horizontal", "Equatorial → Horizontal (AltAz)"),
         ("solar_position", "Sun Geocentric Position"),
         ("lunar_position", "Moon Geocentric Position"),
+        ("icrs_ecl_tod", "ICRS → Ecliptic of Date"),
+        ("horiz_to_equ", "Horizontal → Equatorial (AltAz → RA/Dec)"),
     ]:
         exp_results = [r for r in all_results if r.get("experiment") == exp_name]
         if not exp_results:
@@ -1454,6 +1912,11 @@ def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = T
         if cand_data is None:
             continue
 
+        # Skip libraries that reported "skipped" (e.g., libnova for frame_bias)
+        if isinstance(cand_data, dict) and cand_data.get("skipped"):
+            progress(f"{lib}: skipped ({cand_data.get('reason', 'no reason')})", exp_name, f"skip_{lib}")
+            continue
+
         accuracy = accuracy_fn(ref_data["cases"], cand_data["cases"], "erfa", lib, **accuracy_kwargs)
 
         result = {
@@ -1596,6 +2059,108 @@ def run_experiment_kepler_solver(n: int, seed: int, run_perf: bool = True,
     )
 
 
+def run_experiment_frame_bias(n: int, seed: int, run_perf: bool = True,
+                               perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the frame_bias experiment: ICRS → Mean J2000 frame bias."""
+    return _run_generic_experiment(
+        exp_name="frame_bias", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_direction_vector_inputs,
+        input_fmt_fn=format_frame_bias_input,
+        perf_fmt_fn=format_frame_bias_perf_input,
+        accuracy_fn=compute_accuracy_metrics,
+    )
+
+
+def run_experiment_precession(n: int, seed: int, run_perf: bool = True,
+                               perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the precession experiment: Mean J2000 → Mean of Date."""
+    return _run_generic_experiment(
+        exp_name="precession", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_direction_vector_inputs,
+        input_fmt_fn=format_precession_input,
+        perf_fmt_fn=format_precession_perf_input,
+        accuracy_fn=compute_accuracy_metrics,
+    )
+
+
+def run_experiment_nutation(n: int, seed: int, run_perf: bool = True,
+                             perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the nutation experiment: Mean of Date → True of Date."""
+    return _run_generic_experiment(
+        exp_name="nutation", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_direction_vector_inputs,
+        input_fmt_fn=format_nutation_input,
+        perf_fmt_fn=format_nutation_perf_input,
+        accuracy_fn=compute_accuracy_metrics,
+    )
+
+
+def run_experiment_icrs_ecl_j2000(n: int, seed: int, run_perf: bool = True,
+                                    perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the icrs_ecl_j2000 experiment: ICRS → Ecliptic J2000."""
+    return _run_generic_experiment(
+        exp_name="icrs_ecl_j2000", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_direction_vector_inputs,
+        input_fmt_fn=format_icrs_ecl_j2000_input,
+        perf_fmt_fn=format_icrs_ecl_j2000_perf_input,
+        accuracy_fn=compute_accuracy_metrics,
+    )
+
+
+def run_experiment_icrs_ecl_tod(n: int, seed: int, run_perf: bool = True,
+                                 perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the icrs_ecl_tod experiment: ICRS → Ecliptic of Date."""
+    return _run_generic_experiment(
+        exp_name="icrs_ecl_tod", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_equ_ecl_inputs,
+        input_fmt_fn=format_icrs_ecl_tod_input,
+        perf_fmt_fn=format_icrs_ecl_tod_perf_input,
+        accuracy_fn=compute_angular_accuracy,
+        accuracy_kwargs={"ra_key": "ecl_lon_rad", "dec_key": "ecl_lat_rad"},
+    )
+
+
+def run_experiment_horiz_to_equ(n: int, seed: int, run_perf: bool = True,
+                                 perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run the horiz_to_equ experiment: Horizontal → Equatorial."""
+    return _run_generic_experiment(
+        exp_name="horiz_to_equ", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=generate_horiz_to_equ_inputs,
+        input_fmt_fn=format_horiz_to_equ_input,
+        perf_fmt_fn=format_horiz_to_equ_perf_input,
+        accuracy_fn=compute_angular_accuracy,
+        accuracy_kwargs={"ra_key": "ra_rad", "dec_key": "dec_rad"},
+    )
+
+
+# 13 new matrix experiment runner functions
+def _make_dir_experiment_runner(exp_name, fmt_input, fmt_perf_input):
+    """Factory for direction-vector experiment runners."""
+    def runner(n, seed, run_perf=True, perf_rounds=DEFAULT_PERF_ROUNDS):
+        return _run_generic_experiment(
+            exp_name=exp_name, n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+            input_gen_fn=generate_direction_vector_inputs,
+            input_fmt_fn=fmt_input,
+            perf_fmt_fn=fmt_perf_input,
+            accuracy_fn=compute_accuracy_metrics,
+        )
+    return runner
+
+run_experiment_inv_frame_bias = _make_dir_experiment_runner("inv_frame_bias", format_inv_frame_bias_input, format_inv_frame_bias_perf_input)
+run_experiment_inv_precession = _make_dir_experiment_runner("inv_precession", format_inv_precession_input, format_inv_precession_perf_input)
+run_experiment_inv_nutation = _make_dir_experiment_runner("inv_nutation", format_inv_nutation_input, format_inv_nutation_perf_input)
+run_experiment_inv_bpn = _make_dir_experiment_runner("inv_bpn", format_inv_bpn_input, format_inv_bpn_perf_input)
+run_experiment_inv_icrs_ecl_j2000 = _make_dir_experiment_runner("inv_icrs_ecl_j2000", format_inv_icrs_ecl_j2000_input, format_inv_icrs_ecl_j2000_perf_input)
+run_experiment_obliquity = _make_dir_experiment_runner("obliquity", format_obliquity_input, format_obliquity_perf_input)
+run_experiment_inv_obliquity = _make_dir_experiment_runner("inv_obliquity", format_inv_obliquity_input, format_inv_obliquity_perf_input)
+run_experiment_bias_precession = _make_dir_experiment_runner("bias_precession", format_bias_precession_input, format_bias_precession_perf_input)
+run_experiment_inv_bias_precession = _make_dir_experiment_runner("inv_bias_precession", format_inv_bias_precession_input, format_inv_bias_precession_perf_input)
+run_experiment_precession_nutation = _make_dir_experiment_runner("precession_nutation", format_precession_nutation_input, format_precession_nutation_perf_input)
+run_experiment_inv_precession_nutation = _make_dir_experiment_runner("inv_precession_nutation", format_inv_precession_nutation_input, format_inv_precession_nutation_perf_input)
+run_experiment_inv_icrs_ecl_tod_dir = _make_dir_experiment_runner("inv_icrs_ecl_tod", format_inv_icrs_ecl_tod_dir_input, format_inv_icrs_ecl_tod_dir_perf_input)
+run_experiment_inv_equ_ecl_dir = _make_dir_experiment_runner("inv_equ_ecl", format_inv_equ_ecl_dir_input, format_inv_equ_ecl_dir_perf_input)
+
+
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
@@ -1640,6 +2205,14 @@ def main():
     all_experiments = [
         "frame_rotation_bpn", "gmst_era", "equ_ecl", "equ_horizontal",
         "solar_position", "lunar_position", "kepler_solver",
+        "frame_bias", "precession", "nutation", "icrs_ecl_j2000",
+        "icrs_ecl_tod", "horiz_to_equ",
+        # 13 new matrix experiments
+        "inv_frame_bias", "inv_precession", "inv_nutation", "inv_bpn",
+        "inv_icrs_ecl_j2000", "obliquity", "inv_obliquity",
+        "bias_precession", "inv_bias_precession",
+        "precession_nutation", "inv_precession_nutation",
+        "inv_icrs_ecl_tod", "inv_equ_ecl",
     ]
 
     parser = argparse.ArgumentParser(description="Siderust Lab Orchestrator")
@@ -1719,6 +2292,51 @@ def main():
         "kepler_solver": lambda: run_experiment_kepler_solver(
             args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
         ),
+        "frame_bias": lambda: run_experiment_frame_bias(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
+        ),
+        "precession": lambda: run_experiment_precession(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
+        ),
+        "nutation": lambda: run_experiment_nutation(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
+        ),
+        "icrs_ecl_j2000": lambda: run_experiment_icrs_ecl_j2000(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
+        ),
+        "icrs_ecl_tod": lambda: run_experiment_icrs_ecl_tod(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
+        ),
+        "horiz_to_equ": lambda: run_experiment_horiz_to_equ(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
+        ),
+        # 13 new matrix experiments
+        "inv_frame_bias": lambda: run_experiment_inv_frame_bias(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_precession": lambda: run_experiment_inv_precession(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_nutation": lambda: run_experiment_inv_nutation(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_bpn": lambda: run_experiment_inv_bpn(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_icrs_ecl_j2000": lambda: run_experiment_inv_icrs_ecl_j2000(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "obliquity": lambda: run_experiment_obliquity(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_obliquity": lambda: run_experiment_inv_obliquity(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "bias_precession": lambda: run_experiment_bias_precession(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_bias_precession": lambda: run_experiment_inv_bias_precession(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "precession_nutation": lambda: run_experiment_precession_nutation(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_precession_nutation": lambda: run_experiment_inv_precession_nutation(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_icrs_ecl_tod": lambda: run_experiment_inv_icrs_ecl_tod_dir(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
+        "inv_equ_ecl": lambda: run_experiment_inv_equ_ecl_dir(
+            args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
     }
 
     total_experiments = len(experiments_to_run)
