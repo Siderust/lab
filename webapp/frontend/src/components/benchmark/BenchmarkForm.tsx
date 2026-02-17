@@ -13,6 +13,8 @@ export default function BenchmarkForm({ onSubmit, disabled }: Props) {
   const [n, setN] = useState(1000);
   const [seed, setSeed] = useState(42);
   const [noPerf, setNoPerf] = useState(false);
+  const [perfRounds, setPerfRounds] = useState(5);
+  const [ciMode, setCiMode] = useState(false);
   const [notes, setNotes] = useState("");
 
   const toggleExperiment = (exp: string) => {
@@ -63,8 +65,8 @@ export default function BenchmarkForm({ onSubmit, disabled }: Props) {
         </div>
       </div>
 
-      {/* N, Seed, no-perf */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* N, Seed, Perf rounds */}
+      <div className="grid grid-cols-4 gap-4">
         <div>
           <label className="block text-xs font-medium uppercase text-gray-400 mb-1">
             N (cases)
@@ -89,7 +91,21 @@ export default function BenchmarkForm({ onSubmit, disabled }: Props) {
             className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white"
           />
         </div>
-        <div className="flex items-end">
+        <div>
+          <label className="block text-xs font-medium uppercase text-gray-400 mb-1">
+            Perf Rounds
+          </label>
+          <input
+            type="number"
+            value={perfRounds}
+            onChange={(e) => setPerfRounds(Number(e.target.value))}
+            min={1}
+            max={20}
+            disabled={noPerf}
+            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white disabled:opacity-50"
+          />
+        </div>
+        <div className="flex flex-col justify-end gap-2">
           <label className="flex items-center gap-2 text-sm text-gray-300">
             <input
               type="checkbox"
@@ -97,7 +113,16 @@ export default function BenchmarkForm({ onSubmit, disabled }: Props) {
               onChange={(e) => setNoPerf(e.target.checked)}
               className="rounded border-gray-600"
             />
-            Skip performance
+            Skip perf
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-300">
+            <input
+              type="checkbox"
+              checked={ciMode}
+              onChange={(e) => setCiMode(e.target.checked)}
+              className="rounded border-gray-600"
+            />
+            CI mode
           </label>
         </div>
       </div>
@@ -126,6 +151,8 @@ export default function BenchmarkForm({ onSubmit, disabled }: Props) {
             n,
             seed,
             no_perf: noPerf,
+            perf_rounds: perfRounds,
+            ci_mode: ciMode,
             notes,
           })
         }

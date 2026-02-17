@@ -6,6 +6,7 @@ import RunOverview from "./pages/RunOverview";
 import ExperimentDetail from "./pages/ExperimentDetail";
 import CompareRuns from "./pages/CompareRuns";
 import RunBenchmarks from "./pages/RunBenchmarks";
+import PerformanceMatrix from "./pages/PerformanceMatrix";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,6 +30,10 @@ export default function App() {
               />
               <Route path="/compare" element={<CompareRuns />} />
               <Route path="/benchmark" element={<RunBenchmarks />} />
+              <Route
+                path="/runs/:runId/performance-matrix"
+                element={<PerformanceMatrix />}
+              />
             </Routes>
           </main>
         </div>

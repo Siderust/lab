@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .api import benchmark, compare, experiments, runs
+from .api import benchmark, compare, experiments, performance_matrix, runs
 from .services.benchmark_runner import BenchmarkRunner
 from .services.results_loader import ResultsLoader
 
@@ -48,6 +48,7 @@ app.include_router(runs.router, prefix="/api")
 app.include_router(experiments.router, prefix="/api")
 app.include_router(compare.router, prefix="/api")
 app.include_router(benchmark.router, prefix="/api")
+app.include_router(performance_matrix.router, prefix="/api")
 
 # Serve built frontend (production)
 _FRONTEND_DIST = _WEBAPP_DIR / "frontend" / "dist"

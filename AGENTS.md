@@ -31,7 +31,7 @@ git submodule update --init --recursive
 ```
 
 ## Running benchmarks
-- Run everything with defaults (`N=1000`, `seed=42`):
+- Run everything with defaults (`N=1000`, `seed=42`, `5 perf rounds`):
 ```bash
 ./run.sh run
 ```
@@ -46,6 +46,14 @@ python3 pipeline/orchestrator.py --experiments gmst_era,kepler_solver --n 2000 -
 - Skip performance measurements:
 ```bash
 python3 pipeline/orchestrator.py --experiments all --n 1000 --seed 42 --no-perf
+```
+- CI mode (fast, reduced parameters):
+```bash
+python3 pipeline/orchestrator.py --ci --experiments all
+```
+- Custom performance rounds:
+```bash
+python3 pipeline/orchestrator.py --experiments all --perf-rounds 10
 ```
 
 Current experiment IDs:

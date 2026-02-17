@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { startBenchmark, subscribeBenchmarkLogs, fetchJobs, fetchJobLogs } from "../api/client";
+import { startBenchmark, subscribeBenchmarkLogs, fetchJobs, fetchJobLogs, cancelJob } from "../api/client";
 import type { BenchmarkRequest, BenchmarkStatus } from "../api/types";
 import Header from "../components/layout/Header";
 import BenchmarkForm from "../components/benchmark/BenchmarkForm";
 import LogStream from "../components/benchmark/LogStream";
+import { Loader2, X, Settings2 } from "lucide-react";
 
 export default function RunBenchmarks() {
   const navigate = useNavigate();
-  const [, setJobId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
-  const [lines, setLines] = useState<string[]>([]);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [currentConfig, setCurrentConfig] = useState<BenchmarkRequest | null>(null);
 
   // View-logs state for past jobs
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
@@ -34,8 +37,9 @@ export default function RunBenchmarks() {
 
   const handleSubmit = useCallback(
     async (request: BenchmarkRequest) => {
-      setLines([]);
       setStatus("starting");
+      setLogLines([]);
+      setCurrentConfig(request);
 
       try {
         const job = await startBenchmark(request);
@@ -44,26 +48,19 @@ export default function RunBenchmarks() {
 
         subscribeBenchmarkLogs(
           job.job_id,
-          (line) => setLines((prev) => [...prev, line]),
+          (line) => {
+            setLogLines((prev) => [...prev, line]);
+          },
           (finalStatus) => {
             setStatus(finalStatus);
             if (finalStatus === "completed") {
-              setLines((prev) => [
-                ...prev,
-                "",
-                "--- Benchmark completed. Reloading runs... ---",
-              ]);
-              // Navigate to runs list after a short delay
               setTimeout(() => navigate("/"), 2000);
             }
           }
         );
       } catch (err) {
         setStatus("error");
-        setLines((prev) => [
-          ...prev,
-          `Error: ${err instanceof Error ? err.message : String(err)}`,
-        ]);
+        console.error("Failed to start benchmark run:", err);
       }
     },
     [navigate]
@@ -82,21 +79,97 @@ export default function RunBenchmarks() {
     }
   }, []);
 
+  const handleCancel = useCallback(async () => {
+    if (!jobId || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      await cancelJob(jobId);
+      setStatus("cancelled");
+    } catch (err) {
+      console.error("Failed to cancel job:", err);
+      setStatus("error");
+    } finally {
+      setIsCancelling(false);
+    }
+  }, [jobId, isCancelling]);
+
   const isRunning = status === "running" || status === "starting";
 
   return (
     <div>
       <Header
         title="Run Benchmarks"
-        subtitle="Select experiments, set parameters, and launch. Output streams live below."
+        subtitle="Select experiments, set parameters, and launch."
       />
 
       <div className="space-y-6">
-        <BenchmarkForm onSubmit={handleSubmit} disabled={isRunning} />
+        <div className="space-y-4">
+          <BenchmarkForm onSubmit={handleSubmit} disabled={isRunning} />
+          
+          {/* Loading indicator and cancel button */}
+          {isRunning && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900/60 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-300">
+                      Benchmark running...
+                    </p>
+                    {jobId && (
+                      <p className="text-xs text-gray-500 font-mono mt-0.5">
+                        Job ID: {jobId}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                  className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <X className="h-4 w-4" />
+                  {isCancelling ? "Cancelling..." : "Cancel Execution"}
+                </button>
+              </div>
 
-        {(lines.length > 0 || isRunning) && (
-          <LogStream lines={lines} status={status} />
-        )}
+              {/* Active config display */}
+              {currentConfig && (
+                <div className="rounded-xl border border-gray-800 bg-gray-900/40 px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Settings2 className="h-4 w-4 text-gray-400" />
+                    <span className="text-xs font-medium uppercase text-gray-400">Run Configuration</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-gray-500">Experiments:</span>{" "}
+                      <span className="text-gray-300">{currentConfig.experiments.join(", ")}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">N:</span>{" "}
+                      <span className="text-gray-300 font-mono">{currentConfig.n}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Seed:</span>{" "}
+                      <span className="text-gray-300 font-mono">{currentConfig.seed}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Perf:</span>{" "}
+                      <span className="text-gray-300">
+                        {currentConfig.no_perf ? "disabled" : `${currentConfig.perf_rounds} rounds`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Live log stream */}
+              {logLines.length > 0 && (
+                <LogStream lines={logLines} status="running" />
+              )}
+            </div>
+          )}
+        </div>
 
         {status === "completed" && (
           <p className="text-green-400 text-sm">
@@ -104,9 +177,12 @@ export default function RunBenchmarks() {
           </p>
         )}
         {status === "failed" && (
-          <p className="text-red-400 text-sm">
-            Benchmark failed. Check the output above for details.
-          </p>
+          <div className="space-y-2">
+            <p className="text-red-400 text-sm">
+              Benchmark failed. Check the logs below for details.
+            </p>
+            {logLines.length > 0 && <LogStream lines={logLines} status="failed" />}
+          </div>
         )}
         {status === "closed" && (
           <p className="text-yellow-400 text-sm">
@@ -118,6 +194,11 @@ export default function RunBenchmarks() {
           <p className="text-red-400 text-sm">
             WebSocket error. The benchmark may still be running.
             Check the job history below.
+          </p>
+        )}
+        {status === "cancelled" && (
+          <p className="text-yellow-400 text-sm">
+            Benchmark execution cancelled.
           </p>
         )}
 
@@ -144,6 +225,8 @@ export default function RunBenchmarks() {
                           ? "bg-red-900/50 text-red-300"
                           : job.status === "running"
                           ? "bg-yellow-900/50 text-yellow-300"
+                          : job.status === "cancelled"
+                          ? "bg-orange-900/50 text-orange-300"
                           : "bg-gray-800 text-gray-400"
                       }`}
                     >

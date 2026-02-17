@@ -329,7 +329,7 @@ static void run_lunar_position(void) {
                     - 0.0036539*T*T - T*T*T/3526000.0
                     + T*T*T*T/863310000.0, 360.0);
 
-        double Lp_r = Lp*M_PI/180.0, D_r = D*M_PI/180.0;
+        double D_r = D*M_PI/180.0;
         double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
 
         /* Major longitude terms (×1e-6 deg) */
@@ -438,7 +438,7 @@ static void run_frame_rotation_bpn_perf(void) {
         vecs[3*i+0] = vx; vecs[3*i+1] = vy; vecs[3*i+2] = vz;
     }
 
-    /* Warm-up */
+    /* Warm-up: use GAST, matching functional equ_horizontal path. */
     for (int i = 0; i < n && i < 100; i++) {
         double rnpb[3][3];
         eraPnm06a(2451545.0, jds[i] - 2451545.0, rnpb);
@@ -470,6 +470,1146 @@ static void run_frame_rotation_bpn_perf(void) {
     free(jds);
     free(vecs);
 }
+static void run_gmst_era_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jd_ut1_arr = malloc(n * sizeof(double));
+    double *jd_tt_arr = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        double jd_ut1, jd_tt;
+        if (scanf("%lf %lf", &jd_ut1, &jd_tt) != 2) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+        jd_ut1_arr[i] = jd_ut1;
+        jd_tt_arr[i] = jd_tt;
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double gmst = eraGmst06(2451545.0, jd_ut1_arr[i] - 2451545.0,
+                                2451545.0, jd_tt_arr[i] - 2451545.0);
+        (void)gmst;
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double gmst = eraGmst06(2451545.0, jd_ut1_arr[i] - 2451545.0,
+                                2451545.0, jd_tt_arr[i] - 2451545.0);
+        sink += gmst;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"gmst_era_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jd_ut1_arr);
+    free(jd_tt_arr);
+}
+
+static void run_equ_ecl_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *ras = malloc(n * sizeof(double));
+    double *decs = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf", &jds[i], &ras[i], &decs[i]) != 3) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up: match measured operation to functional path (Eqec06). */
+    for (int i = 0; i < n && i < 100; i++) {
+        double ecl_lon, ecl_lat;
+        eraEqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i], &ecl_lon, &ecl_lat);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double ecl_lon, ecl_lat;
+        eraEqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i], &ecl_lon, &ecl_lat);
+        sink += ecl_lon;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"equ_ecl_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+    free(ras);
+    free(decs);
+}
+
+static void run_equ_horizontal_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *params = malloc(n * 6 * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf %lf %lf",
+                  &params[6*i], &params[6*i+1], &params[6*i+2],
+                  &params[6*i+3], &params[6*i+4], &params[6*i+5]) != 6) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up */
+    for (int i = 0; i < n && i < 100; i++) {
+        double jd_ut1 = params[6*i];
+        double jd_tt = params[6*i+1];
+        double ra = params[6*i+2];
+        double dec = params[6*i+3];
+        double lon = params[6*i+4];
+        double lat = params[6*i+5];
+
+        double gast = eraGst06a(2451545.0, jd_ut1 - 2451545.0,
+                                2451545.0, jd_tt - 2451545.0);
+        double ha = normalize_angle(gast + lon - ra);
+        double az, alt;
+        eraHd2ae(ha, dec, lat, &az, &alt);
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double jd_ut1 = params[6*i];
+        double jd_tt = params[6*i+1];
+        double ra = params[6*i+2];
+        double dec = params[6*i+3];
+        double lon = params[6*i+4];
+        double lat = params[6*i+5];
+
+        double gast = eraGst06a(2451545.0, jd_ut1 - 2451545.0,
+                                2451545.0, jd_tt - 2451545.0);
+        double ha = normalize_angle(gast + lon - ra);
+        double az, alt;
+        eraHd2ae(ha, dec, lat, &az, &alt);
+        sink += az;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"equ_horizontal_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(params);
+}
+
+static void run_solar_position_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up: include full RA/Dec/dist extraction (same scope as functional). */
+    for (int i = 0; i < n && i < 100; i++) {
+        double pvh[2][3], pvb[2][3];
+        eraEpv00(2451545.0, jds[i] - 2451545.0, pvh, pvb);
+        double sx = -pvh[0][0], sy = -pvh[0][1], sz = -pvh[0][2];
+        double dist_au = sqrt(sx*sx + sy*sy + sz*sz);
+        double ra = normalize_angle(atan2(sy, sx));
+        double dec = asin(sz / dist_au);
+        (void)ra;
+        (void)dec;
+    }
+
+    /* Timed run — perf contract: compute RA + Dec + distance */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double pvh[2][3], pvb[2][3];
+        eraEpv00(2451545.0, jds[i] - 2451545.0, pvh, pvb);
+        double sx = -pvh[0][0], sy = -pvh[0][1], sz = -pvh[0][2];
+        double dist_au = sqrt(sx*sx + sy*sy + sz*sz);
+        double ra = normalize_angle(atan2(sy, sx));
+        double dec = asin(sz / dist_au);
+        sink += ra + dec + dist_au;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"solar_position_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_lunar_position_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up: use the same simplified Meeus model as run_lunar_position. */
+    for (int i = 0; i < n && i < 100; i++) {
+        double date1 = 2451545.0, date2 = jds[i] - 2451545.0;
+        double T = date2 / 36525.0;
+
+        double Lp = fmod(218.3164477 + 481267.88123421*T
+                    - 0.0015786*T*T + T*T*T/538841.0
+                    - T*T*T*T/65194000.0, 360.0);
+        double D  = fmod(297.8501921 + 445267.1114034*T
+                    - 0.0018819*T*T + T*T*T/545868.0
+                    - T*T*T*T/113065000.0, 360.0);
+        double M  = fmod(357.5291092 + 35999.0502909*T
+                    - 0.0001536*T*T + T*T*T/24490000.0, 360.0);
+        double Mp = fmod(134.9633964 + 477198.8675055*T
+                    + 0.0087414*T*T + T*T*T/69699.0
+                    - T*T*T*T/14712000.0, 360.0);
+        double F  = fmod(93.2720950 + 483202.0175233*T
+                    - 0.0036539*T*T - T*T*T/3526000.0
+                    + T*T*T*T/863310000.0, 360.0);
+
+        double D_r = D*M_PI/180.0;
+        double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
+
+        double sum_l = 6288774.0*sin(Mp_r)
+                     + 1274027.0*sin(2.0*D_r - Mp_r)
+                     +  658314.0*sin(2.0*D_r)
+                     +  213618.0*sin(2.0*Mp_r)
+                     -  185116.0*sin(M_r)
+                     -  114332.0*sin(2.0*F_r);
+        double sum_b = 5128122.0*sin(F_r)
+                     +  280602.0*sin(Mp_r + F_r)
+                     +  277693.0*sin(Mp_r - F_r)
+                     +  173237.0*sin(2.0*D_r - F_r);
+        double ecl_lon = (Lp + sum_l / 1000000.0) * M_PI / 180.0;
+        double ecl_lat = (sum_b / 1000000.0) * M_PI / 180.0;
+
+        double eps = eraObl06(date1, date2);
+        double ce = cos(eps), se = sin(eps);
+        double ra = normalize_angle(atan2(sin(ecl_lon)*ce - tan(ecl_lat)*se, cos(ecl_lon)));
+        double dec = asin(sin(ecl_lat)*ce + cos(ecl_lat)*se*sin(ecl_lon));
+        (void)ra;
+        (void)dec;
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double date1 = 2451545.0, date2 = jds[i] - 2451545.0;
+        double T = date2 / 36525.0;
+
+        double Lp = fmod(218.3164477 + 481267.88123421*T
+                    - 0.0015786*T*T + T*T*T/538841.0
+                    - T*T*T*T/65194000.0, 360.0);
+        double D  = fmod(297.8501921 + 445267.1114034*T
+                    - 0.0018819*T*T + T*T*T/545868.0
+                    - T*T*T*T/113065000.0, 360.0);
+        double M  = fmod(357.5291092 + 35999.0502909*T
+                    - 0.0001536*T*T + T*T*T/24490000.0, 360.0);
+        double Mp = fmod(134.9633964 + 477198.8675055*T
+                    + 0.0087414*T*T + T*T*T/69699.0
+                    - T*T*T*T/14712000.0, 360.0);
+        double F  = fmod(93.2720950 + 483202.0175233*T
+                    - 0.0036539*T*T - T*T*T/3526000.0
+                    + T*T*T*T/863310000.0, 360.0);
+
+        double D_r = D*M_PI/180.0;
+        double M_r = M*M_PI/180.0, Mp_r = Mp*M_PI/180.0, F_r = F*M_PI/180.0;
+
+        double sum_l = 6288774.0*sin(Mp_r)
+                     + 1274027.0*sin(2.0*D_r - Mp_r)
+                     +  658314.0*sin(2.0*D_r)
+                     +  213618.0*sin(2.0*Mp_r)
+                     -  185116.0*sin(M_r)
+                     -  114332.0*sin(2.0*F_r);
+        double sum_b = 5128122.0*sin(F_r)
+                     +  280602.0*sin(Mp_r + F_r)
+                     +  277693.0*sin(Mp_r - F_r)
+                     +  173237.0*sin(2.0*D_r - F_r);
+        double ecl_lon = (Lp + sum_l / 1000000.0) * M_PI / 180.0;
+        double ecl_lat = (sum_b / 1000000.0) * M_PI / 180.0;
+
+        double eps = eraObl06(date1, date2);
+        double ce = cos(eps), se = sin(eps);
+        double ra = normalize_angle(atan2(sin(ecl_lon)*ce - tan(ecl_lat)*se, cos(ecl_lon)));
+        double dec = asin(sin(ecl_lat)*ce + cos(ecl_lat)*se*sin(ecl_lon));
+        sink += ra + dec;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"lunar_position_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_kepler_solver_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *m_arr = malloc(n * sizeof(double));
+    double *e_arr = malloc(n * sizeof(double));
+
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf", &m_arr[i], &e_arr[i]) != 2) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    /* Warm-up: match kepler_solver settings (100 iters, 1e-15 threshold). */
+    for (int i = 0; i < n && i < 100; i++) {
+        double E = m_arr[i];
+        for (int iter = 0; iter < 100; iter++) {
+            double f = E - e_arr[i] * sin(E) - m_arr[i];
+            double fp = 1.0 - e_arr[i] * cos(E);
+            if (fabs(fp) < 1e-30) break;
+            E -= f / fp;
+            if (fabs(f / fp) < 1e-15) break;
+        }
+    }
+
+    /* Timed run */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double E = m_arr[i];
+        for (int iter = 0; iter < 100; iter++) {
+            double f = E - e_arr[i] * sin(E) - m_arr[i];
+            double fp = 1.0 - e_arr[i] * cos(E);
+            if (fabs(fp) < 1e-30) break;
+            E -= f / fp;
+            if (fabs(f / fp) < 1e-15) break;
+        }
+        sink += E;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"kepler_solver_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(m_arr);
+    free(e_arr);
+}
+
+/* ================================================================== */
+/* NEW COORDINATE-TRANSFORM EXPERIMENTS                                */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Experiment: frame_bias                                              */
+/* ICRS ↔ EquatorialMeanJ2000 via eraBp06 bias matrix (rb)            */
+/* Input per line: jd_tt vx vy vz                                      */
+/* ------------------------------------------------------------------ */
+
+static void run_frame_bias(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"frame_bias\",\"library\":\"erfa\",");
+    printf("\"model\":\"IAU_2006_bias\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, vx, vy, vz;
+        if (scanf("%lf %lf %lf %lf", &jd_tt, &vx, &vy, &vz) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        /* Frame bias matrix from eraBp06 */
+        double rb[3][3], rp[3][3], rbp[3][3];
+        eraBp06(2451545.0, 0.0, rb, rp, rbp);  /* bias is epoch-independent */
+
+        double vin[3] = {vx, vy, vz};
+        normalize3(vin);
+        double vout[3];
+        mv3(rb, vin, vout);
+        normalize3(vout);
+
+        /* Closure via transpose */
+        double rb_t[3][3];
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                rb_t[r][c] = rb[c][r];
+        double vback[3];
+        mv3(rb_t, vout, vback);
+        normalize3(vback);
+        double closure_rad = ang_sep(vin, vback);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"input\":[%.17e,%.17e,%.17e],", jd_tt, vin[0], vin[1], vin[2]);
+        printf("\"output\":[%.17e,%.17e,%.17e],", vout[0], vout[1], vout[2]);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+static void run_frame_bias_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *vecs = malloc(n * 3 * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf", &jds[i], &vecs[3*i], &vecs[3*i+1], &vecs[3*i+2]) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+    }
+
+    for (int i = 0; i < n && i < 100; i++) {
+        double rb[3][3], rp[3][3], rbp[3][3];
+        eraBp06(2451545.0, 0.0, rb, rp, rbp);
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    double vout[3];
+    for (int i = 0; i < n; i++) {
+        double rb[3][3], rp[3][3], rbp[3][3];
+        eraBp06(2451545.0, 0.0, rb, rp, rbp);
+        double vin[3] = {vecs[3*i], vecs[3*i+1], vecs[3*i+2]};
+        normalize3(vin);
+        mv3(rb, vin, vout);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+
+    printf("{\"experiment\":\"frame_bias_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, elapsed_ns / n);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), vout[0]);
+    free(jds); free(vecs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: precession                                              */
+/* EquatorialMeanJ2000 → EquatorialMeanOfDate via eraPmat06            */
+/* Input per line: jd_tt vx vy vz                                      */
+/* ------------------------------------------------------------------ */
+
+static void run_precession(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"precession\",\"library\":\"erfa\",");
+    printf("\"model\":\"IAU_2006_precession\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, vx, vy, vz;
+        if (scanf("%lf %lf %lf %lf", &jd_tt, &vx, &vy, &vz) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+        double rp[3][3];
+        eraPmat06(date1, date2, rp);
+
+        double vin[3] = {vx, vy, vz};
+        normalize3(vin);
+        double vout[3];
+        mv3(rp, vin, vout);
+        normalize3(vout);
+
+        /* Closure via transpose */
+        double rp_t[3][3];
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                rp_t[r][c] = rp[c][r];
+        double vback[3];
+        mv3(rp_t, vout, vback);
+        normalize3(vback);
+        double closure_rad = ang_sep(vin, vback);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"input\":[%.17e,%.17e,%.17e],", jd_tt, vin[0], vin[1], vin[2]);
+        printf("\"output\":[%.17e,%.17e,%.17e],", vout[0], vout[1], vout[2]);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+static void run_precession_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *vecs = malloc(n * 3 * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf", &jds[i], &vecs[3*i], &vecs[3*i+1], &vecs[3*i+2]) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+    }
+
+    for (int i = 0; i < n && i < 100; i++) {
+        double rp[3][3];
+        eraPmat06(2451545.0, jds[i] - 2451545.0, rp);
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    double vout[3];
+    for (int i = 0; i < n; i++) {
+        double rp[3][3];
+        eraPmat06(2451545.0, jds[i] - 2451545.0, rp);
+        double vin[3] = {vecs[3*i], vecs[3*i+1], vecs[3*i+2]};
+        normalize3(vin);
+        mv3(rp, vin, vout);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+
+    printf("{\"experiment\":\"precession_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, elapsed_ns / n);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), vout[0]);
+    free(jds); free(vecs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: nutation                                                */
+/* EquatorialMeanOfDate → EquatorialTrueOfDate via eraNum06a           */
+/* Input per line: jd_tt vx vy vz                                      */
+/* ------------------------------------------------------------------ */
+
+static void run_nutation(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"nutation\",\"library\":\"erfa\",");
+    printf("\"model\":\"IAU_2006_2000A_nutation\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, vx, vy, vz;
+        if (scanf("%lf %lf %lf %lf", &jd_tt, &vx, &vy, &vz) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+        double rn[3][3];
+        eraNum06a(date1, date2, rn);
+
+        double vin[3] = {vx, vy, vz};
+        normalize3(vin);
+        double vout[3];
+        mv3(rn, vin, vout);
+        normalize3(vout);
+
+        double rn_t[3][3];
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                rn_t[r][c] = rn[c][r];
+        double vback[3];
+        mv3(rn_t, vout, vback);
+        normalize3(vback);
+        double closure_rad = ang_sep(vin, vback);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"input\":[%.17e,%.17e,%.17e],", jd_tt, vin[0], vin[1], vin[2]);
+        printf("\"output\":[%.17e,%.17e,%.17e],", vout[0], vout[1], vout[2]);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+static void run_nutation_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *vecs = malloc(n * 3 * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf", &jds[i], &vecs[3*i], &vecs[3*i+1], &vecs[3*i+2]) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+    }
+
+    for (int i = 0; i < n && i < 100; i++) {
+        double rn[3][3];
+        eraNum06a(2451545.0, jds[i] - 2451545.0, rn);
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    double vout[3];
+    for (int i = 0; i < n; i++) {
+        double rn[3][3];
+        eraNum06a(2451545.0, jds[i] - 2451545.0, rn);
+        double vin[3] = {vecs[3*i], vecs[3*i+1], vecs[3*i+2]};
+        normalize3(vin);
+        mv3(rn, vin, vout);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+
+    printf("{\"experiment\":\"nutation_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, elapsed_ns / n);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), vout[0]);
+    free(jds); free(vecs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: icrs_ecl_j2000                                          */
+/* ICRS → EclipticMeanJ2000 via eraEcm06 at J2000 (bias+obliquity)    */
+/* Input per line: jd_tt vx vy vz                                      */
+/* ------------------------------------------------------------------ */
+
+static void run_icrs_ecl_j2000(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"icrs_ecl_j2000\",\"library\":\"erfa\",");
+    printf("\"model\":\"IAU_2006_ecliptic_J2000\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    /* Ecliptic rotation at J2000 (time-independent for this experiment) */
+    double rm[3][3];
+    eraEcm06(2451545.0, 0.0, rm);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, vx, vy, vz;
+        if (scanf("%lf %lf %lf %lf", &jd_tt, &vx, &vy, &vz) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        double vin[3] = {vx, vy, vz};
+        normalize3(vin);
+        double vout[3];
+        mv3(rm, vin, vout);
+        normalize3(vout);
+
+        /* Convert output to ecliptic lon/lat */
+        double ecl_lon = normalize_angle(atan2(vout[1], vout[0]));
+        double ecl_lat = asin(vout[2]);
+
+        /* Closure via transpose */
+        double rm_t[3][3];
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                rm_t[r][c] = rm[c][r];
+        double vback[3];
+        mv3(rm_t, vout, vback);
+        normalize3(vback);
+        double closure_rad = ang_sep(vin, vback);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"input\":[%.17e,%.17e,%.17e],", jd_tt, vin[0], vin[1], vin[2]);
+        printf("\"output\":[%.17e,%.17e,%.17e],", vout[0], vout[1], vout[2]);
+        printf("\"ecl_lon_rad\":%.17e,\"ecl_lat_rad\":%.17e,", ecl_lon, ecl_lat);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+static void run_icrs_ecl_j2000_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *vecs = malloc(n * 3 * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf", &jds[i], &vecs[3*i], &vecs[3*i+1], &vecs[3*i+2]) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+    }
+
+    double rm[3][3];
+    eraEcm06(2451545.0, 0.0, rm);
+
+    for (int i = 0; i < n && i < 100; i++) {
+        double vin[3] = {vecs[3*i], vecs[3*i+1], vecs[3*i+2]};
+        normalize3(vin);
+        double vout[3];
+        mv3(rm, vin, vout);
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    double vout[3];
+    for (int i = 0; i < n; i++) {
+        double vin[3] = {vecs[3*i], vecs[3*i+1], vecs[3*i+2]};
+        normalize3(vin);
+        mv3(rm, vin, vout);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+
+    printf("{\"experiment\":\"icrs_ecl_j2000_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, elapsed_ns / n);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), vout[0]);
+    free(jds); free(vecs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: icrs_ecl_tod                                            */
+/* ICRS → EclipticTrueOfDate via eraEqec06 (full chain)                */
+/* Input per line: jd_tt ra_rad dec_rad                                */
+/* ------------------------------------------------------------------ */
+
+static void run_icrs_ecl_tod(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"icrs_ecl_tod\",\"library\":\"erfa\",");
+    printf("\"model\":\"IAU_2006_ecliptic_of_date\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, ra_rad, dec_rad;
+        if (scanf("%lf %lf %lf", &jd_tt, &ra_rad, &dec_rad) != 3) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+
+        double ecl_lon, ecl_lat;
+        eraEqec06(date1, date2, ra_rad, dec_rad, &ecl_lon, &ecl_lat);
+
+        /* Closure */
+        double ra_back, dec_back;
+        eraEceq06(date1, date2, ecl_lon, ecl_lat, &ra_back, &dec_back);
+        double v_in[3]  = { cos(dec_rad)*cos(ra_rad), cos(dec_rad)*sin(ra_rad), sin(dec_rad) };
+        double v_bk[3]  = { cos(dec_back)*cos(ra_back), cos(dec_back)*sin(ra_back), sin(dec_back) };
+        double closure_rad = ang_sep(v_in, v_bk);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"ra_rad\":%.17e,\"dec_rad\":%.17e,", jd_tt, ra_rad, dec_rad);
+        printf("\"ecl_lon_rad\":%.17e,\"ecl_lat_rad\":%.17e,", ecl_lon, ecl_lat);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+static void run_icrs_ecl_tod_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *ras = malloc(n * sizeof(double));
+    double *decs = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf", &jds[i], &ras[i], &decs[i]) != 3) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+    }
+
+    for (int i = 0; i < n && i < 100; i++) {
+        double ecl_lon, ecl_lat;
+        eraEqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i], &ecl_lon, &ecl_lat);
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double ecl_lon, ecl_lat;
+        eraEqec06(2451545.0, jds[i] - 2451545.0, ras[i], decs[i], &ecl_lon, &ecl_lat);
+        sink += ecl_lon + ecl_lat;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+
+    printf("{\"experiment\":\"icrs_ecl_tod_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, elapsed_ns / n);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+    free(jds); free(ras); free(decs);
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment: horiz_to_equ                                            */
+/* Horizontal (Az/Alt) → Equatorial (RA/Dec) via eraAe2hd + GAST      */
+/* Input: jd_ut1 jd_tt az_rad alt_rad obs_lon_rad obs_lat_rad         */
+/* ------------------------------------------------------------------ */
+
+static void run_horiz_to_equ(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"horiz_to_equ\",\"library\":\"erfa\",");
+    printf("\"model\":\"eraAe2hd_GAST\",");
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_ut1, jd_tt, az_rad, alt_rad, obs_lon, obs_lat;
+        if (scanf("%lf %lf %lf %lf %lf %lf", &jd_ut1, &jd_tt, &az_rad, &alt_rad,
+                  &obs_lon, &obs_lat) != 6) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double ut1_hi = 2451545.0, ut1_lo = jd_ut1 - 2451545.0;
+        double tt_hi  = 2451545.0, tt_lo  = jd_tt  - 2451545.0;
+
+        double gast = eraGst06a(ut1_hi, ut1_lo, tt_hi, tt_lo);
+        double last = gast + obs_lon;
+
+        /* Az/Alt → HA/Dec */
+        double ha, dec;
+        eraAe2hd(az_rad, alt_rad, obs_lat, &ha, &dec);
+        double ra = normalize_angle(last - ha);
+
+        /* Closure: RA/Dec → Az/Alt → RA/Dec */
+        double ha2 = last - ra;
+        double az2, alt2;
+        eraHd2ae(ha2, dec, obs_lat, &az2, &alt2);
+        double ha_back, dec_back;
+        eraAe2hd(az2, alt2, obs_lat, &ha_back, &dec_back);
+        double ra_back = normalize_angle(last - ha_back);
+
+        double v_in[3]  = { cos(dec)*cos(ra), cos(dec)*sin(ra), sin(dec) };
+        double v_bk[3]  = { cos(dec_back)*cos(ra_back), cos(dec_back)*sin(ra_back), sin(dec_back) };
+        double closure_rad = ang_sep(v_in, v_bk);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_ut1\":%.15f,\"jd_tt\":%.15f,", jd_ut1, jd_tt);
+        printf("\"az_rad\":%.17e,\"alt_rad\":%.17e,", az_rad, alt_rad);
+        printf("\"obs_lon_rad\":%.17e,\"obs_lat_rad\":%.17e,", obs_lon, obs_lat);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,", ra, dec);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+static void run_horiz_to_equ_perf(void) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *params = malloc(n * 6 * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf %lf %lf",
+                  &params[6*i], &params[6*i+1], &params[6*i+2],
+                  &params[6*i+3], &params[6*i+4], &params[6*i+5]) != 6) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+    }
+
+    for (int i = 0; i < n && i < 100; i++) {
+        double jd_ut1 = params[6*i], jd_tt = params[6*i+1];
+        double az = params[6*i+2], alt = params[6*i+3];
+        double lon = params[6*i+4], lat = params[6*i+5];
+        double gast = eraGst06a(2451545.0, jd_ut1 - 2451545.0, 2451545.0, jd_tt - 2451545.0);
+        double ha, dec;
+        eraAe2hd(az, alt, lat, &ha, &dec);
+        (void)ha; (void)dec; (void)gast; (void)lon;
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double jd_ut1 = params[6*i], jd_tt = params[6*i+1];
+        double az = params[6*i+2], alt = params[6*i+3];
+        double lon = params[6*i+4], lat = params[6*i+5];
+        double gast = eraGst06a(2451545.0, jd_ut1 - 2451545.0, 2451545.0, jd_tt - 2451545.0);
+        double last = gast + lon;
+        double ha, dec;
+        eraAe2hd(az, alt, lat, &ha, &dec);
+        double ra = normalize_angle(last - ha);
+        sink += ra + dec;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+
+    printf("{\"experiment\":\"horiz_to_equ_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, elapsed_ns / n);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+    free(params);
+}
+
+/* ================================================================== */
+/* 13 NEW DIRECTION-VECTOR TRANSFORM EXPERIMENTS                       */
+/* All share: input = jd_tt vx vy vz, output = rotated direction       */
+/* ================================================================== */
+
+/* Helper: generic direction-vector accuracy experiment.
+ * fn_matrix(jd_tt, date1, date2, mat) fills mat with the 3x3 rotation.
+ */
+typedef void (*matrix_fn_t)(double jd_tt, double date1, double date2, double mat[3][3]);
+
+static void _run_dir_accuracy(const char *exp_name, const char *model, matrix_fn_t fn) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"%s\",\"library\":\"erfa\",", exp_name);
+    printf("\"model\":\"%s\",", model);
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, vx, vy, vz;
+        if (scanf("%lf %lf %lf %lf", &jd_tt, &vx, &vy, &vz) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+        double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+        double mat[3][3];
+        fn(jd_tt, date1, date2, mat);
+
+        double vin[3] = {vx, vy, vz};
+        normalize3(vin);
+        double vout[3];
+        mv3(mat, vin, vout);
+        normalize3(vout);
+
+        /* Closure via transpose */
+        double mat_t[3][3];
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                mat_t[r][c] = mat[c][r];
+        double vback[3];
+        mv3(mat_t, vout, vback);
+        normalize3(vback);
+        double closure_rad = ang_sep(vin, vback);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,\"input\":[%.17e,%.17e,%.17e],", jd_tt, vin[0], vin[1], vin[2]);
+        printf("\"output\":[%.17e,%.17e,%.17e],", vout[0], vout[1], vout[2]);
+        printf("\"closure_rad\":%.17e}", closure_rad);
+    }
+    printf("\n]}\n");
+}
+
+static void _run_dir_perf(const char *exp_name, matrix_fn_t fn) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    double *vecs = malloc(n * 3 * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf %lf %lf %lf", &jds[i], &vecs[3*i], &vecs[3*i+1], &vecs[3*i+2]) != 4) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+    }
+
+    /* warmup */
+    for (int i = 0; i < n && i < 100; i++) {
+        double mat[3][3];
+        fn(jds[i], 2451545.0, jds[i] - 2451545.0, mat);
+    }
+
+    struct timespec t0, t1;
+    double vout[3];
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    for (int i = 0; i < n; i++) {
+        double date1 = 2451545.0, date2 = jds[i] - 2451545.0;
+        double mat[3][3];
+        fn(jds[i], date1, date2, mat);
+        double vin[3] = {vecs[3*i], vecs[3*i+1], vecs[3*i+2]};
+        normalize3(vin);
+        mv3(mat, vin, vout);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+
+    printf("{\"experiment\":\"%s_perf\",\"library\":\"erfa\",", exp_name);
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, elapsed_ns / n);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), vout[0]);
+    free(jds); free(vecs);
+}
+
+/* --- Matrix factory functions --- */
+
+static void mat_inv_frame_bias(double jd_tt, double d1, double d2, double m[3][3]) {
+    (void)jd_tt;
+    double rb[3][3], rp[3][3], rbp[3][3];
+    eraBp06(2451545.0, 0.0, rb, rp, rbp);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rb[c][r]; /* transpose */
+}
+
+static void mat_inv_precession(double jd_tt, double d1, double d2, double m[3][3]) {
+    (void)jd_tt;
+    double rp[3][3];
+    eraPmat06(d1, d2, rp);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rp[c][r];
+}
+
+static void mat_inv_nutation(double jd_tt, double d1, double d2, double m[3][3]) {
+    (void)jd_tt;
+    double rn[3][3];
+    eraNum06a(d1, d2, rn);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rn[c][r];
+}
+
+static void mat_inv_bpn(double jd_tt, double d1, double d2, double m[3][3]) {
+    (void)jd_tt;
+    double rnpb[3][3];
+    eraPnm06a(d1, d2, rnpb);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rnpb[c][r];
+}
+
+static void mat_inv_icrs_ecl_j2000(double jd_tt, double d1, double d2, double m[3][3]) {
+    (void)jd_tt; (void)d1; (void)d2;
+    double rm[3][3];
+    eraEcm06(2451545.0, 0.0, rm);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rm[c][r];
+}
+
+static void mat_obliquity(double jd_tt, double d1, double d2, double m[3][3]) {
+    /* EclMeanJ2000 → EqMeanJ2000: Rx(+eps0) */
+    (void)jd_tt; (void)d1; (void)d2;
+    double eps = eraObl06(2451545.0, 0.0);
+    double c = cos(eps), s = sin(eps);
+    m[0][0]=1; m[0][1]=0;  m[0][2]=0;
+    m[1][0]=0; m[1][1]=c;  m[1][2]=-s;
+    m[2][0]=0; m[2][1]=s;  m[2][2]=c;
+}
+
+static void mat_inv_obliquity(double jd_tt, double d1, double d2, double m[3][3]) {
+    /* EqMeanJ2000 → EclMeanJ2000: Rx(-eps0) */
+    (void)jd_tt; (void)d1; (void)d2;
+    double eps = eraObl06(2451545.0, 0.0);
+    double c = cos(eps), s = sin(eps);
+    m[0][0]=1; m[0][1]=0; m[0][2]=0;
+    m[1][0]=0; m[1][1]=c; m[1][2]=s;
+    m[2][0]=0; m[2][1]=-s; m[2][2]=c;
+}
+
+static void mat_bias_precession(double jd_tt, double d1, double d2, double m[3][3]) {
+    (void)jd_tt;
+    double rb[3][3], rp[3][3], rbp[3][3];
+    eraBp06(d1, d2, rb, rp, rbp);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rbp[r][c];
+}
+
+static void mat_inv_bias_precession(double jd_tt, double d1, double d2, double m[3][3]) {
+    (void)jd_tt;
+    double rb[3][3], rp[3][3], rbp[3][3];
+    eraBp06(d1, d2, rb, rp, rbp);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rbp[c][r];
+}
+
+static void mat_precession_nutation(double jd_tt, double d1, double d2, double m[3][3]) {
+    /* EqMeanJ2000 → EqTrueOfDate: P × N composed (= NxP product) */
+    (void)jd_tt;
+    double rp[3][3], rn[3][3];
+    eraPmat06(d1, d2, rp);
+    eraNum06a(d1, d2, rn);
+    /* m = rn × rp */
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 3; c++) {
+            m[r][c] = 0;
+            for (int k = 0; k < 3; k++)
+                m[r][c] += rn[r][k] * rp[k][c];
+        }
+}
+
+static void mat_inv_precession_nutation(double jd_tt, double d1, double d2, double m[3][3]) {
+    double rpn[3][3];
+    mat_precession_nutation(jd_tt, d1, d2, rpn);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rpn[c][r];
+}
+
+static void mat_inv_icrs_ecl_tod(double jd_tt, double d1, double d2, double m[3][3]) {
+    /* EclTrueOfDate → ICRS: transpose(eraEcm06) */
+    (void)jd_tt;
+    double rm[3][3];
+    eraEcm06(d1, d2, rm);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rm[c][r];
+}
+
+static void mat_inv_equ_ecl(double jd_tt, double d1, double d2, double m[3][3]) {
+    /* EclTrueOfDate → EqMeanOfDate: RBP × ECM06^T
+     * ECM06 = ICRS→Ecl.  RBP = ICRS→EqMeanOfDate.
+     * Ecl→EqMeanOfDate = RBP × ECM06^T
+     */
+    (void)jd_tt;
+    double rm[3][3], rm_t[3][3];
+    double rb[3][3], rp[3][3], rbp[3][3];
+    eraEcm06(d1, d2, rm);
+    eraBp06(d1, d2, rb, rp, rbp);
+    for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) rm_t[r][c] = rm[c][r];
+    /* m = rbp × rm_t */
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 3; c++) {
+            m[r][c] = 0;
+            for (int k = 0; k < 3; k++)
+                m[r][c] += rbp[r][k] * rm_t[k][c];
+        }
+}
+
+/* --- Experiment entry points (dispatched from main) --- */
+static void run_inv_frame_bias(void)        { _run_dir_accuracy("inv_frame_bias",        "IAU_2006_inv_bias",       mat_inv_frame_bias); }
+static void run_inv_frame_bias_perf(void)   { _run_dir_perf("inv_frame_bias",        mat_inv_frame_bias); }
+static void run_inv_precession(void)        { _run_dir_accuracy("inv_precession",        "IAU_2006_inv_prec",       mat_inv_precession); }
+static void run_inv_precession_perf(void)   { _run_dir_perf("inv_precession",        mat_inv_precession); }
+static void run_inv_nutation(void)          { _run_dir_accuracy("inv_nutation",          "IAU_2000A_inv_nut",       mat_inv_nutation); }
+static void run_inv_nutation_perf(void)     { _run_dir_perf("inv_nutation",          mat_inv_nutation); }
+static void run_inv_bpn(void)               { _run_dir_accuracy("inv_bpn",               "IAU_2006_inv_bpn",        mat_inv_bpn); }
+static void run_inv_bpn_perf(void)          { _run_dir_perf("inv_bpn",               mat_inv_bpn); }
+static void run_inv_icrs_ecl_j2000(void)    { _run_dir_accuracy("inv_icrs_ecl_j2000",    "IAU_2006_inv_ecl_j2000",  mat_inv_icrs_ecl_j2000); }
+static void run_inv_icrs_ecl_j2000_perf(void){ _run_dir_perf("inv_icrs_ecl_j2000",    mat_inv_icrs_ecl_j2000); }
+static void run_obliquity(void)             { _run_dir_accuracy("obliquity",             "IAU_2006_obliquity",      mat_obliquity); }
+static void run_obliquity_perf(void)        { _run_dir_perf("obliquity",             mat_obliquity); }
+static void run_inv_obliquity(void)         { _run_dir_accuracy("inv_obliquity",         "IAU_2006_inv_obliq",      mat_inv_obliquity); }
+static void run_inv_obliquity_perf(void)    { _run_dir_perf("inv_obliquity",         mat_inv_obliquity); }
+static void run_bias_precession(void)       { _run_dir_accuracy("bias_precession",       "IAU_2006_bias_prec",      mat_bias_precession); }
+static void run_bias_precession_perf(void)  { _run_dir_perf("bias_precession",       mat_bias_precession); }
+static void run_inv_bias_precession(void)   { _run_dir_accuracy("inv_bias_precession",   "IAU_2006_inv_bias_prec",  mat_inv_bias_precession); }
+static void run_inv_bias_precession_perf(void){ _run_dir_perf("inv_bias_precession",   mat_inv_bias_precession); }
+static void run_precession_nutation(void)   { _run_dir_accuracy("precession_nutation",   "IAU_2006_prec_nut",       mat_precession_nutation); }
+static void run_precession_nutation_perf(void){ _run_dir_perf("precession_nutation",   mat_precession_nutation); }
+static void run_inv_precession_nutation(void){ _run_dir_accuracy("inv_precession_nutation","IAU_2006_inv_prec_nut", mat_inv_precession_nutation); }
+static void run_inv_precession_nutation_perf(void){ _run_dir_perf("inv_precession_nutation",mat_inv_precession_nutation); }
+static void run_inv_icrs_ecl_tod(void)      { _run_dir_accuracy("inv_icrs_ecl_tod",      "IAU_2006_inv_ecl_tod",    mat_inv_icrs_ecl_tod); }
+static void run_inv_icrs_ecl_tod_perf(void) { _run_dir_perf("inv_icrs_ecl_tod",      mat_inv_icrs_ecl_tod); }
+static void run_inv_equ_ecl(void)           { _run_dir_accuracy("inv_equ_ecl",           "IAU_2006_inv_equ_ecl",    mat_inv_equ_ecl); }
+static void run_inv_equ_ecl_perf(void)      { _run_dir_perf("inv_equ_ecl",           mat_inv_equ_ecl); }
 
 /* ------------------------------------------------------------------ */
 /* Main dispatcher                                                     */
@@ -498,6 +1638,95 @@ int main(void) {
         run_kepler_solver();
     } else if (strcmp(experiment, "frame_rotation_bpn_perf") == 0) {
         run_frame_rotation_bpn_perf();
+    } else if (strcmp(experiment, "gmst_era_perf") == 0) {
+        run_gmst_era_perf();
+    } else if (strcmp(experiment, "equ_ecl_perf") == 0) {
+        run_equ_ecl_perf();
+    } else if (strcmp(experiment, "equ_horizontal_perf") == 0) {
+        run_equ_horizontal_perf();
+    } else if (strcmp(experiment, "solar_position_perf") == 0) {
+        run_solar_position_perf();
+    } else if (strcmp(experiment, "lunar_position_perf") == 0) {
+        run_lunar_position_perf();
+    } else if (strcmp(experiment, "kepler_solver_perf") == 0) {
+        run_kepler_solver_perf();
+    } else if (strcmp(experiment, "frame_bias") == 0) {
+        run_frame_bias();
+    } else if (strcmp(experiment, "frame_bias_perf") == 0) {
+        run_frame_bias_perf();
+    } else if (strcmp(experiment, "precession") == 0) {
+        run_precession();
+    } else if (strcmp(experiment, "precession_perf") == 0) {
+        run_precession_perf();
+    } else if (strcmp(experiment, "nutation") == 0) {
+        run_nutation();
+    } else if (strcmp(experiment, "nutation_perf") == 0) {
+        run_nutation_perf();
+    } else if (strcmp(experiment, "icrs_ecl_j2000") == 0) {
+        run_icrs_ecl_j2000();
+    } else if (strcmp(experiment, "icrs_ecl_j2000_perf") == 0) {
+        run_icrs_ecl_j2000_perf();
+    } else if (strcmp(experiment, "icrs_ecl_tod") == 0) {
+        run_icrs_ecl_tod();
+    } else if (strcmp(experiment, "icrs_ecl_tod_perf") == 0) {
+        run_icrs_ecl_tod_perf();
+    } else if (strcmp(experiment, "horiz_to_equ") == 0) {
+        run_horiz_to_equ();
+    } else if (strcmp(experiment, "horiz_to_equ_perf") == 0) {
+        run_horiz_to_equ_perf();
+    /* 13 new matrix experiments */
+    } else if (strcmp(experiment, "inv_frame_bias") == 0) {
+        run_inv_frame_bias();
+    } else if (strcmp(experiment, "inv_frame_bias_perf") == 0) {
+        run_inv_frame_bias_perf();
+    } else if (strcmp(experiment, "inv_precession") == 0) {
+        run_inv_precession();
+    } else if (strcmp(experiment, "inv_precession_perf") == 0) {
+        run_inv_precession_perf();
+    } else if (strcmp(experiment, "inv_nutation") == 0) {
+        run_inv_nutation();
+    } else if (strcmp(experiment, "inv_nutation_perf") == 0) {
+        run_inv_nutation_perf();
+    } else if (strcmp(experiment, "inv_bpn") == 0) {
+        run_inv_bpn();
+    } else if (strcmp(experiment, "inv_bpn_perf") == 0) {
+        run_inv_bpn_perf();
+    } else if (strcmp(experiment, "inv_icrs_ecl_j2000") == 0) {
+        run_inv_icrs_ecl_j2000();
+    } else if (strcmp(experiment, "inv_icrs_ecl_j2000_perf") == 0) {
+        run_inv_icrs_ecl_j2000_perf();
+    } else if (strcmp(experiment, "obliquity") == 0) {
+        run_obliquity();
+    } else if (strcmp(experiment, "obliquity_perf") == 0) {
+        run_obliquity_perf();
+    } else if (strcmp(experiment, "inv_obliquity") == 0) {
+        run_inv_obliquity();
+    } else if (strcmp(experiment, "inv_obliquity_perf") == 0) {
+        run_inv_obliquity_perf();
+    } else if (strcmp(experiment, "bias_precession") == 0) {
+        run_bias_precession();
+    } else if (strcmp(experiment, "bias_precession_perf") == 0) {
+        run_bias_precession_perf();
+    } else if (strcmp(experiment, "inv_bias_precession") == 0) {
+        run_inv_bias_precession();
+    } else if (strcmp(experiment, "inv_bias_precession_perf") == 0) {
+        run_inv_bias_precession_perf();
+    } else if (strcmp(experiment, "precession_nutation") == 0) {
+        run_precession_nutation();
+    } else if (strcmp(experiment, "precession_nutation_perf") == 0) {
+        run_precession_nutation_perf();
+    } else if (strcmp(experiment, "inv_precession_nutation") == 0) {
+        run_inv_precession_nutation();
+    } else if (strcmp(experiment, "inv_precession_nutation_perf") == 0) {
+        run_inv_precession_nutation_perf();
+    } else if (strcmp(experiment, "inv_icrs_ecl_tod") == 0) {
+        run_inv_icrs_ecl_tod();
+    } else if (strcmp(experiment, "inv_icrs_ecl_tod_perf") == 0) {
+        run_inv_icrs_ecl_tod_perf();
+    } else if (strcmp(experiment, "inv_equ_ecl") == 0) {
+        run_inv_equ_ecl();
+    } else if (strcmp(experiment, "inv_equ_ecl_perf") == 0) {
+        run_inv_equ_ecl_perf();
     } else {
         fprintf(stderr, "Unknown experiment: %s\n", experiment);
         return 1;

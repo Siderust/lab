@@ -7,6 +7,7 @@ import type {
   BenchmarkStatus,
   CompareResult,
   ExperimentResult,
+  PerformanceMatrixResponse,
   RunDetail,
   RunSummary,
 } from "./types";
@@ -56,6 +57,14 @@ export function reloadRuns(): Promise<{ status: string }> {
   return post<{ status: string }>("/runs/reload", {});
 }
 
+// ----- Performance Matrix ----- //
+
+export function fetchPerformanceMatrix(
+  runId: string
+): Promise<PerformanceMatrixResponse> {
+  return get<PerformanceMatrixResponse>(`/runs/${runId}/performance-matrix`);
+}
+
 // ----- Compare ----- //
 
 export function fetchCompare(
@@ -75,6 +84,10 @@ export function startBenchmark(
 
 export function fetchJobs(): Promise<BenchmarkStatus[]> {
   return get<BenchmarkStatus[]>("/benchmark/jobs");
+}
+
+export function cancelJob(jobId: string): Promise<BenchmarkStatus> {
+  return post<BenchmarkStatus>(`/benchmark/jobs/${jobId}/cancel`, {});
 }
 
 export async function fetchJobLogs(jobId: string): Promise<string> {
@@ -102,13 +115,24 @@ export function subscribeBenchmarkLogs(
     try {
       const msg = JSON.parse(ev.data);
       if (msg.type === "log") {
-        onLine(msg.line);
+        // Check for cancellation marker
+        if (msg.line === "__CANCELLED__") {
+          onLine("Benchmark execution cancelled by user.");
+        } else {
+          onLine(msg.line);
+        }
       } else if (msg.type === "done") {
         finished = true;
         onDone(msg.status);
       }
     } catch {
-      onLine(ev.data);
+      // Handle plain text messages
+      const text = ev.data;
+      if (text === "__CANCELLED__") {
+        onLine("Benchmark execution cancelled by user.");
+      } else {
+        onLine(text);
+      }
     }
   };
 

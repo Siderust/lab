@@ -89,6 +89,12 @@ const DISPLAY_NAMES: Record<string, string> = {
   solar_position: "Solar Position",
   lunar_position: "Lunar Position",
   kepler_solver: "Kepler Solver",
+  frame_bias: "Frame Bias",
+  precession: "Precession",
+  nutation: "Nutation",
+  icrs_ecl_j2000: "ICRS → Ecl J2000",
+  icrs_ecl_tod: "ICRS → Ecl of Date",
+  horiz_to_equ: "Horiz → Equatorial",
 };
 
 export function analyzeRun(run: RunDetail): RunAnalytics {

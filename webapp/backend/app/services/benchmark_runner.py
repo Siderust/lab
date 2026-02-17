@@ -85,6 +85,47 @@ class BenchmarkRunner:
     def _log_file_path(self, job_id: str) -> Path:
         return self._logs_dir / f"{job_id}.log"
 
+    def _append_log(self, job_id: str, line: str) -> None:
+        """Append one line to in-memory and on-disk logs, then fan out to subscribers."""
+        self._log_buffers.setdefault(job_id, []).append(line)
+        log_file = self._log_file_path(job_id)
+        with open(log_file, "a") as fh:
+            fh.write(line + "\n")
+        for q in self._subscribers.get(job_id, []):
+            try:
+                q.put_nowait(line)
+            except asyncio.QueueFull:
+                pass
+
+    async def _rebuild_siderust_adapter(self, job_id: str) -> bool:
+        """Build siderust adapter so benchmark jobs always use current local code."""
+        manifest = self.lab_root / "pipeline" / "adapters" / "siderust_adapter" / "Cargo.toml"
+        cmd = ["cargo", "build", "--release", "--manifest-path", str(manifest)]
+        self._append_log(job_id, "Rebuilding siderust adapter (cargo build --release)...")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(self.lab_root),
+            )
+        except FileNotFoundError:
+            self._append_log(job_id, "ERROR: cargo not found on PATH; cannot build siderust adapter.")
+            return False
+
+        assert proc.stdout is not None
+        async for raw_line in proc.stdout:
+            line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
+            self._append_log(job_id, line)
+
+        rc = await proc.wait()
+        if rc != 0:
+            self._append_log(job_id, f"ERROR: siderust adapter build failed with exit code {rc}.")
+            return False
+
+        self._append_log(job_id, "Siderust adapter build complete.")
+        return True
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -127,6 +168,23 @@ class BenchmarkRunner:
         # Persist initial status
         self._persist_job(job_id)
 
+        build_ok = await self._rebuild_siderust_adapter(job_id)
+        if not build_ok:
+            status.status = "failed"
+            status.finished_at = datetime.now(timezone.utc).isoformat()
+            self._active_job = None
+            self._finished.add(job_id)
+            self._persist_job(job_id)
+            for q in self._subscribers.get(job_id, []):
+                try:
+                    q.put_nowait("__EOF__")
+                except asyncio.QueueFull:
+                    pass
+            return status
+
+        # Store config in status for visibility
+        status.config = request
+
         # Build command — use lab venv python, not bare python3
         python = self._python_executable()
         cmd = [python, str(self.orchestrator)]
@@ -136,8 +194,12 @@ class BenchmarkRunner:
         cmd.extend(["--experiments", exps])
         cmd.extend(["--n", str(request.n)])
         cmd.extend(["--seed", str(request.seed)])
+        cmd.extend(["--perf-rounds", str(request.perf_rounds)])
+        cmd.append("--no-build")
         if request.no_perf:
             cmd.append("--no-perf")
+        if request.ci_mode:
+            cmd.append("--ci")
 
         logger.info("Starting benchmark: %s", " ".join(cmd))
 
@@ -173,16 +235,98 @@ class BenchmarkRunner:
         if q in subs:
             subs.remove(q)
 
+    async def cancel(self, job_id: str) -> bool:
+        """Cancel a running benchmark job.
+        
+        Returns:
+            True if the job was cancelled, False if it wasn't running.
+        """
+        # Check if this job is actually running
+        if job_id not in self._processes or job_id in self._finished:
+            return False
+
+        proc = self._processes.get(job_id)
+        if proc is None or proc.returncode is not None:
+            return False
+
+        logger.info("Cancelling job %s", job_id)
+
+        # Terminate the process gracefully
+        try:
+            proc.terminate()
+            # Wait briefly for graceful shutdown
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                # Force kill if it doesn't terminate
+                proc.kill()
+                await proc.wait()
+        except ProcessLookupError:
+            # Process already died
+            pass
+
+        # Update status
+        status = self._jobs.get(job_id)
+        if status is not None:
+            status.status = "cancelled"
+            status.finished_at = datetime.now(timezone.utc).isoformat()
+            self._persist_job(job_id)
+
+        # Clean up active job tracking
+        if self._active_job == job_id:
+            self._active_job = None
+        self._finished.add(job_id)
+
+        # Notify subscribers
+        for q in self._subscribers.get(job_id, []):
+            try:
+                q.put_nowait("__CANCELLED__")
+                q.put_nowait("__EOF__")
+            except asyncio.QueueFull:
+                pass
+
+        logger.info("Job %s cancelled successfully", job_id)
+        return True
+
+    def _parse_progress(self, job_id: str, line: str) -> None:
+        """Parse [PROGRESS] lines from orchestrator to update job status."""
+        if not line.startswith("[PROGRESS]"):
+            return
+        status = self._jobs.get(job_id)
+        if status is None:
+            return
+
+        # Parse: [PROGRESS] experiment=<name> step=<step> current=<n> total=<m> | <message>
+        try:
+            parts = line.split("|", 1)
+            prefix = parts[0]
+            tokens = prefix.split()
+            for token in tokens[1:]:  # skip [PROGRESS]
+                if token.startswith("experiment="):
+                    status.current_experiment = token.split("=", 1)[1]
+                elif token.startswith("step="):
+                    status.current_step = token.split("=", 1)[1]
+                elif token.startswith("current="):
+                    current = int(token.split("=", 1)[1])
+                    for t2 in tokens:
+                        if t2.startswith("total="):
+                            total = int(t2.split("=", 1)[1])
+                            if total > 0:
+                                status.progress_pct = round(current / total * 100, 1)
+        except Exception:
+            pass
+
     async def _read_output(
         self, job_id: str, proc: asyncio.subprocess.Process
     ) -> None:
         """Read subprocess stdout line by line and dispatch to subscribers."""
-        log_file = self._log_file_path(job_id)
         try:
-            with open(log_file, "w") as fh:
+            with open(self._log_file_path(job_id), "a") as fh:
                 assert proc.stdout is not None
                 async for raw_line in proc.stdout:
                     line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
+                    # Parse progress markers
+                    self._parse_progress(job_id, line)
                     # Buffer in memory
                     self._log_buffers.setdefault(job_id, []).append(line)
                     # Persist to disk
@@ -197,9 +341,9 @@ class BenchmarkRunner:
 
             await proc.wait()
         finally:
-            # Update status
+            # Update status (unless already set to cancelled)
             status = self._jobs.get(job_id)
-            if status is not None:
+            if status is not None and status.status != "cancelled":
                 status.status = "completed" if proc.returncode == 0 else "failed"
                 status.finished_at = datetime.now(timezone.utc).isoformat()
             self._active_job = None

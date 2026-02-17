@@ -76,14 +76,50 @@ class KeplerAccuracy(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Performance
+# Performance (enhanced with multi-sample statistics)
 # ---------------------------------------------------------------------------
 
 class PerformanceData(BaseModel):
+    """Performance data — supports both old (single-pass) and new (multi-sample) formats."""
     per_op_ns: float | None = None
+    per_op_ns_mean: float | None = None
+    per_op_ns_median: float | None = None
+    per_op_ns_std_dev: float | None = None
+    per_op_ns_min: float | None = None
+    per_op_ns_max: float | None = None
+    per_op_ns_ci95: list[float] | None = None
+    per_op_ns_cv_pct: float | None = None
     throughput_ops_s: float | None = None
     total_ns: float | None = None
+    total_ns_median: float | None = None
     batch_size: int | None = None
+    rounds: int | None = None
+    samples: list[float] | None = None
+    warnings: list[str] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Experiment description (for non-expert users)
+# ---------------------------------------------------------------------------
+
+class ExperimentDescription(BaseModel, extra="allow"):
+    """Human-readable description of what an experiment measures."""
+    title: str | None = None
+    what: str | None = None
+    why: str | None = None
+    units: str | None = None
+    interpret: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Benchmark configuration
+# ---------------------------------------------------------------------------
+
+class BenchmarkConfig(BaseModel):
+    """Configuration used for this benchmark run."""
+    perf_rounds: int = 0
+    perf_warmup: int = 0
+    perf_enabled: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +149,12 @@ class AlignmentChecklist(BaseModel, extra="allow"):
 class RunMetadata(BaseModel):
     date: str | None = None
     git_shas: dict[str, str] = {}
+    git_branch: str | None = None
     cpu: str | None = None
+    cpu_model: str | None = None
+    cpu_count: int | None = None
     os: str | None = None
+    platform_detail: str | None = None
     toolchain: dict[str, str] = {}
 
 
@@ -128,11 +168,13 @@ class ExperimentResult(BaseModel, extra="allow"):
     experiment: str
     candidate_library: str
     reference_library: str
+    description: ExperimentDescription | dict[str, Any] = {}
     alignment: AlignmentChecklist | None = None
     inputs: dict[str, Any] = {}
     accuracy: dict[str, Any] = {}
     performance: PerformanceData | dict[str, Any] = {}
     reference_performance: PerformanceData | dict[str, Any] = {}
+    benchmark_config: BenchmarkConfig | dict[str, Any] = {}
     run_metadata: RunMetadata | None = None
 
 
@@ -194,12 +236,18 @@ class BenchmarkRequest(BaseModel):
     n: int = 1000
     seed: int = 42
     no_perf: bool = False
+    perf_rounds: int = 5
+    ci_mode: bool = False
     notes: str = ""
 
 
 class BenchmarkStatus(BaseModel):
     job_id: str
-    status: str = "pending"  # pending | running | completed | failed
+    status: str = "pending"  # pending | running | completed | failed | cancelled
     started_at: str | None = None
     finished_at: str | None = None
     run_id: str | None = None
+    config: BenchmarkRequest | None = None
+    current_experiment: str | None = None
+    current_step: str | None = None
+    progress_pct: float | None = None
