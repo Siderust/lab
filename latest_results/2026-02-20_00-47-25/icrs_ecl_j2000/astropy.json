@@ -1,0 +1,207 @@
+{
+  "experiment": "icrs_ecl_j2000",
+  "candidate_library": "astropy",
+  "reference_library": "erfa",
+  "description": {
+    "title": "ICRS \u2192 Ecliptic J2000",
+    "what": "Transforms an ICRS direction vector to ecliptic coordinates at the J2000 epoch. This is a time-independent rotation by the mean obliquity at J2000.",
+    "why": "Tests the obliquity constant and ecliptic frame rotation without time-dependent terms.",
+    "units": "Angular error in mas (milliarcseconds).",
+    "interpret": "Time-independent transform \u2014 all IAU-based libraries should agree to \u00b5as level."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "IAU 2006 ecliptic rotation at J2000 epoch via eraEcm06",
+      "siderust": "ICRS \u2192 EclipticMeanJ2000 via frame rotation (mean obliquity at J2000)",
+      "astropy": "IAU 2006 ecliptic rotation via bundled ERFA (erfa.ecm06)",
+      "libnova": "Meeus obliquity (Eq 22.2) applied at J2000 epoch",
+      "anise": "J2000 \u2194 ECLIPJ2000 built-in orientation rotation (constant obliquity)"
+    },
+    "model_parity_class": "model-parity",
+    "accuracy_interpretation": "accuracy vs ERFA reference (time-independent obliquity)",
+    "note": "Time-independent rotation by the mean obliquity at J2000. All IAU-based libraries should agree to \u00b5as level. libnova uses Meeus obliquity which is close but not identical."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "913924b3b94ba6cb"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "astropy",
+    "angular_error_mas": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 3.073585126505738,
+      "max": 4.3467057710126396,
+      "min": 0.0,
+      "mean": 0.04070238345158955,
+      "rms": 0.3764357620473371
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 1.4901161193847656e-08,
+      "max": 1.4901161193847656e-08,
+      "min": 0.0,
+      "mean": 3.129243850708008e-10,
+      "rms": 2.1593834081574437e-09
+    },
+    "matrix_frobenius": null,
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2463084.30861812,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2485762.1003232463,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2454642.743369886,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2472700.994755603,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2469834.5718260407,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2452054.022908542,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2465212.0721854474,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2472453.0245250864,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2466827.061612829,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2483920.8654375835,
+        "angular_error_mas": 3.073585126505738
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 981.67187,
+    "per_op_ns_mean": 989.562912,
+    "per_op_ns_median": 981.67187,
+    "per_op_ns_std_dev": 21.531842046131864,
+    "per_op_ns_min": 971.89518,
+    "per_op_ns_max": 1047.36504,
+    "per_op_ns_ci95": [
+      976.2173380353876,
+      1002.9084859646124
+    ],
+    "per_op_ns_cv_pct": 2.1758942038979594,
+    "throughput_ops_s": 1018670.3220904149,
+    "total_ns_median": 49083593.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      991.11488,
+      976.4901,
+      1047.36504,
+      993.36562,
+      992.52874,
+      971.89518,
+      978.00912,
+      981.5167,
+      981.75782,
+      981.58592
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 7.0,
+    "per_op_ns_mean": 7.28,
+    "per_op_ns_median": 7.0,
+    "per_op_ns_std_dev": 0.6972963661329534,
+    "per_op_ns_min": 6.9,
+    "per_op_ns_max": 8.6,
+    "per_op_ns_ci95": [
+      6.84781123465679,
+      7.71218876534321
+    ],
+    "per_op_ns_cv_pct": 9.57824678754057,
+    "throughput_ops_s": 142857142.85714287,
+    "total_ns_median": 348422.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      8.6,
+      7.0,
+      6.9,
+      7.0,
+      7.0,
+      6.9,
+      7.0,
+      8.6,
+      6.9,
+      6.9
+    ],
+    "warnings": [
+      "Per-op time (7.0 ns) is below measurable threshold (10.0 ns). Results may be dominated by measurement overhead."
+    ]
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T01:02:21Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

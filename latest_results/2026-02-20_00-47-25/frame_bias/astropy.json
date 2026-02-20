@@ -1,0 +1,205 @@
+{
+  "experiment": "frame_bias",
+  "candidate_library": "astropy",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Frame Bias (ICRS \u2192 Mean J2000)",
+    "what": "Applies the ICRS-to-mean-J2000 frame bias rotation to a direction vector. This isolates the ~17 mas frame bias from precession/nutation.",
+    "why": "Frame bias is a small but constant rotation. Testing it separately verifies the bias component of the full BPN matrix.",
+    "units": "Angular error in mas (milliarcseconds).",
+    "interpret": "All libraries implementing IAU frame bias should agree to sub-mas level."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "IAU 2006 frame bias matrix component from eraBp06",
+      "siderust": "IERS 2003 frame bias via frame rotation provider (ICRS \u2192 EquatorialMeanJ2000)",
+      "astropy": "IAU 2006 frame bias via bundled ERFA (erfa.bp06)",
+      "libnova": "Not available (no frame bias concept in libnova)",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-parity",
+    "accuracy_interpretation": "accuracy vs ERFA reference (IAU frame bias is a fixed rotation)",
+    "note": "Frame bias is a small (~17 mas) time-independent rotation between ICRS and mean J2000. libnova has no equivalent \u2014 its results are skipped."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "5998289be568599f"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "astropy",
+    "angular_error_mas": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.030735851265029424,
+      "max": 4.3467057710126396,
+      "min": 0.0,
+      "mean": 0.034555213198578086,
+      "rms": 0.35044262281920674
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 1.4901161193847656e-08,
+      "max": 2.1073424255447017e-08,
+      "min": 0.0,
+      "mean": 2.296896809693142e-10,
+      "rms": 1.8848643661548967e-09
+    },
+    "matrix_frobenius": null,
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2485762.1003232463,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2475436.090506343,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2479805.147937503,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2481774.2285570293,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2480061.127858077,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2472700.994755603,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2452054.022908542,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2466827.061612829,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2463129.0195755223,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2485286.1856203033,
+        "angular_error_mas": 3.073585126505738
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 3364.90597,
+    "per_op_ns_mean": 3385.405524,
+    "per_op_ns_median": 3364.90597,
+    "per_op_ns_std_dev": 63.29761649159931,
+    "per_op_ns_min": 3339.07304,
+    "per_op_ns_max": 3554.9378,
+    "per_op_ns_ci95": [
+      3346.173254839635,
+      3424.6377931603647
+    ],
+    "per_op_ns_cv_pct": 1.8697203641592246,
+    "throughput_ops_s": 297185.1246113721,
+    "total_ns_median": 168245298.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      3350.7488,
+      3361.84976,
+      3339.07304,
+      3345.2363,
+      3367.6959,
+      3411.22144,
+      3554.9378,
+      3362.11604,
+      3369.79536,
+      3391.3808
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 176.5,
+    "per_op_ns_mean": 181.05,
+    "per_op_ns_median": 176.5,
+    "per_op_ns_std_dev": 14.1720577977308,
+    "per_op_ns_min": 175.5,
+    "per_op_ns_max": 221.3,
+    "per_op_ns_ci95": [
+      172.26606757261368,
+      189.83393242738634
+    ],
+    "per_op_ns_cv_pct": 7.82770383746523,
+    "throughput_ops_s": 5665722.3796034,
+    "total_ns_median": 8825906.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      176.6,
+      176.7,
+      176.1,
+      175.5,
+      175.9,
+      176.4,
+      176.0,
+      221.3,
+      177.2,
+      178.8
+    ],
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T01:00:32Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

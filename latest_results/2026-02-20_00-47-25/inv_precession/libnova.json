@@ -1,0 +1,204 @@
+{
+  "experiment": "inv_precession",
+  "candidate_library": "libnova",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Inverse Precession (Mean of Date \u2192 Mean J2000)",
+    "what": "Reverses IAU precession by applying the transposed precession matrix.",
+    "units": "Angular error in mas.",
+    "interpret": "libnova uses Meeus \u2014 arcsec differences expected."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "Transpose of IAU 2006 precession matrix (eraPmat06 \u2192 rp^T)",
+      "siderust": "EquatorialMeanOfDate \u2192 EquatorialMeanJ2000 via frame rotation inverse",
+      "astropy": "Transpose of IAU 2006 precession via bundled ERFA",
+      "libnova": "Meeus inverse precession via ln_get_equ_prec2(date\u2192J2000)",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-mismatch"
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "78e8e8fc7c8eebd8"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "libnova",
+    "angular_error_mas": {
+      "p50": 205.1827932652581,
+      "p90": 876.3414235091604,
+      "p95": 1000.2982154884703,
+      "p99": 1163.5807107139335,
+      "max": 1291.1289346665267,
+      "min": 0.0,
+      "mean": 333.2878101970023,
+      "rms": 466.21911826214574
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "max": 2.1073424255447017e-08,
+      "min": 0.0,
+      "mean": 1.1048039141853295e-10,
+      "rms": 1.3328003749250112e-09
+    },
+    "matrix_frobenius": null,
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2487817.4143550117,
+        "angular_error_mas": 1291.1289346665267
+      },
+      {
+        "jd_tt": 2487716.498789517,
+        "angular_error_mas": 1281.5965462099996
+      },
+      {
+        "jd_tt": 2487653.7573934277,
+        "angular_error_mas": 1264.9735309316757
+      },
+      {
+        "jd_tt": 2487509.324215384,
+        "angular_error_mas": 1262.5777420393017
+      },
+      {
+        "jd_tt": 2487506.3684163587,
+        "angular_error_mas": 1245.2231000012202
+      },
+      {
+        "jd_tt": 2487464.308700642,
+        "angular_error_mas": 1240.2363494436754
+      },
+      {
+        "jd_tt": 2487425.943100393,
+        "angular_error_mas": 1215.7651344975889
+      },
+      {
+        "jd_tt": 2486678.312197671,
+        "angular_error_mas": 1199.2418641881673
+      },
+      {
+        "jd_tt": 2486556.375263644,
+        "angular_error_mas": 1177.8409717966342
+      },
+      {
+        "jd_tt": 2487673.082923019,
+        "angular_error_mas": 1166.23014983798
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 529.75,
+    "per_op_ns_mean": 543.75,
+    "per_op_ns_median": 529.75,
+    "per_op_ns_std_dev": 43.4343757869271,
+    "per_op_ns_min": 524.8,
+    "per_op_ns_max": 666.3,
+    "per_op_ns_ci95": [
+      516.8290949780659,
+      570.6709050219341
+    ],
+    "per_op_ns_cv_pct": 7.987931179204984,
+    "throughput_ops_s": 1887682.8692779613,
+    "total_ns_median": 26486313.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      544.8,
+      529.2,
+      666.3,
+      526.5,
+      530.3,
+      528.2,
+      531.7,
+      530.8,
+      524.9,
+      524.8
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 80.69999999999999,
+    "per_op_ns_mean": 90.34,
+    "per_op_ns_median": 80.69999999999999,
+    "per_op_ns_std_dev": 18.93363849519333,
+    "per_op_ns_min": 77.8,
+    "per_op_ns_max": 126.3,
+    "per_op_ns_ci95": [
+      78.60480928034544,
+      102.07519071965457
+    ],
+    "per_op_ns_cv_pct": 20.958200680975565,
+    "throughput_ops_s": 12391573.729863694,
+    "total_ns_median": 4035855.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      82.6,
+      94.7,
+      123.5,
+      126.3,
+      78.4,
+      78.3,
+      77.8,
+      78.3,
+      78.8,
+      84.7
+    ],
+    "warnings": [
+      "High coefficient of variation (21.0%). Results are unstable. Consider increasing sample count or reducing system load."
+    ]
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T01:04:26Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

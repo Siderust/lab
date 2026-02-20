@@ -1,0 +1,165 @@
+{
+  "experiment": "equ_ecl",
+  "candidate_library": "libnova",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Equatorial to Ecliptic Coordinate Transform",
+    "what": "Converts sky positions from RA/Dec (equatorial) to ecliptic longitude/latitude, using the obliquity of the ecliptic.",
+    "why": "Ecliptic coordinates are natural for solar system objects. The transform depends on the obliquity model used.",
+    "units": "Angular separation in arcseconds between reference and candidate ecliptic positions.",
+    "interpret": "Lower separation = better agreement with ERFA's IAU 2006 obliquity model."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "IAU 2006 obliquity-based transform (eraEqec06 / eraEceq06)",
+      "siderust": "IAU 2006 ecliptic-of-date via precession matrix + mean obliquity",
+      "astropy": "IAU 2006 via bundled ERFA (erfa.eqec06 / erfa.eceq06)",
+      "libnova": "Meeus obliquity (Eq 22.2) via ln_get_ecl_from_equ / ln_get_equ_from_ecl",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-mismatch",
+    "accuracy_interpretation": "agreement with ERFA baseline (libnova Meeus obliquity differs)",
+    "note": "ERFA and Astropy share the same IAU 2006 obliquity model (reference). Siderust uses an explicit IAU 2006 equatorial/ecliptic-of-date transform path. libnova uses Meeus obliquity polynomial \u2014 expect ~arcsec-level differences."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "3ad99c5329c9e0c6"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "libnova",
+    "angular_sep_arcsec": {
+      "p50": 1815.1512895003073,
+      "p90": 3920.0827649745042,
+      "p99": 4731.68942116058,
+      "max": 4995.501243803768,
+      "mean": 1964.783140007692,
+      "rms": 2371.9310811348228
+    },
+    "signed_ra_error_arcsec": {
+      "p50": 2485.9848765363276,
+      "p90": 4512.117911613226,
+      "p99": 4986.026994837909,
+      "max": 5030.987795267658,
+      "mean": -2486.9462150944673,
+      "rms": 2896.95261701861
+    },
+    "signed_dec_error_arcsec": {
+      "p50": 1.0437206178500116,
+      "p90": 3.1168320844258157,
+      "p99": 4.082647576678592,
+      "max": 4.317910272814181,
+      "mean": -0.04216210417751151,
+      "rms": 1.7925031735248422
+    },
+    "nan_count": 0
+  },
+  "performance": {
+    "per_op_ns": 9593.4,
+    "per_op_ns_mean": 10161.029999999999,
+    "per_op_ns_median": 9593.4,
+    "per_op_ns_std_dev": 1975.359706230741,
+    "per_op_ns_min": 7525.5,
+    "per_op_ns_max": 14730.8,
+    "per_op_ns_ci95": [
+      8936.689369517191,
+      11385.370630482807
+    ],
+    "per_op_ns_cv_pct": 19.440545950860702,
+    "throughput_ops_s": 104238.33051889841,
+    "total_ns_median": 479669934.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      9097.6,
+      14730.8,
+      9782.9,
+      10957.0,
+      9795.9,
+      9326.4,
+      9403.9,
+      9124.8,
+      11865.5,
+      7525.5
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 271.04999999999995,
+    "per_op_ns_mean": 265.90999999999997,
+    "per_op_ns_median": 271.04999999999995,
+    "per_op_ns_std_dev": 30.017567078851233,
+    "per_op_ns_min": 183.5,
+    "per_op_ns_max": 294.8,
+    "per_op_ns_ci95": [
+      247.3049191699328,
+      284.5150808300672
+    ],
+    "per_op_ns_cv_pct": 11.288619111297521,
+    "throughput_ops_s": 3689356.2073418195,
+    "total_ns_median": 13553435.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      183.5,
+      275.3,
+      269.0,
+      273.8,
+      270.2,
+      270.7,
+      271.4,
+      268.9,
+      281.5,
+      294.8
+    ],
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T00:48:28Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

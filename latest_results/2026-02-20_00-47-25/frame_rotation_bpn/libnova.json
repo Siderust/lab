@@ -1,0 +1,212 @@
+{
+  "experiment": "frame_rotation_bpn",
+  "candidate_library": "libnova",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Frame Rotation (Bias-Precession-Nutation)",
+    "what": "Rotates a direction vector from the ICRS celestial reference frame to the True-of-Date frame using the Bias-Precession-Nutation (BPN) matrix.",
+    "why": "This is the fundamental coordinate transformation used in astrometry. Differences indicate how well each library models Earth's axis wobble.",
+    "units": "Angular error in milli-arcseconds (mas). 1 mas = 1/3,600,000 of a degree.",
+    "interpret": "Lower error = closer to ERFA's IAU 2006/2000A model. Siderust uses simpler Meeus precession + IAU 1980 nutation, so some offset is expected."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
+      "siderust": "IERS 2003 frame bias + IAU 2006 precession + IAU 2000B nutation (frame_rotation provider)",
+      "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
+      "libnova": "Meeus precession (\u03b6,z,\u03b8 Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-mismatch",
+    "accuracy_interpretation": "agreement with ERFA baseline (models differ across libraries)",
+    "mode": "common_denominator",
+    "note": "ERFA and Astropy use the same IAU 2006/2000A model (reference). Siderust uses IAU 2006 precession + IAU 2000B nutation (close to ERFA, with 2000B vs 2000A differences). libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). Differences measure the model gap, not implementation bugs."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "epoch_range": [
+      "JD 2415020.0",
+      "JD 2488069.5"
+    ],
+    "dataset_fingerprint": "8f6f4ee4c2f156a4"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "libnova",
+    "angular_error_mas": {
+      "p50": 34.97673936740141,
+      "p90": 78.5058533839189,
+      "p95": 90.12973642222163,
+      "p99": 104.68524111085881,
+      "max": 1286.9772955680685,
+      "min": 0.0,
+      "mean": 43.13058255821912,
+      "rms": 70.4457396711074
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 1.4901161193847656e-08,
+      "max": 1.4402571642626885e-06,
+      "min": 0.0,
+      "mean": 3.1843535889424477e-09,
+      "rms": 5.8699984490859515e-08
+    },
+    "matrix_frobenius": null,
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2488069.5,
+        "angular_error_mas": 1286.9772955680685
+      },
+      {
+        "jd_tt": 2415020.0,
+        "angular_error_mas": 1014.841771543377
+      },
+      {
+        "jd_tt": 2456306.7250005747,
+        "angular_error_mas": 129.9657756773727
+      },
+      {
+        "jd_tt": 2462475.9832583084,
+        "angular_error_mas": 109.18800308965002
+      },
+      {
+        "jd_tt": 2462444.4444139553,
+        "angular_error_mas": 108.84137363368032
+      },
+      {
+        "jd_tt": 2462278.6457325276,
+        "angular_error_mas": 107.88240010682507
+      },
+      {
+        "jd_tt": 2462320.7926101927,
+        "angular_error_mas": 106.29451036499248
+      },
+      {
+        "jd_tt": 2462344.0564072407,
+        "angular_error_mas": 105.67055396994569
+      },
+      {
+        "jd_tt": 2462235.3819180597,
+        "angular_error_mas": 105.13278684576318
+      },
+      {
+        "jd_tt": 2462171.7491413015,
+        "angular_error_mas": 104.9529188152343
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 12497.05,
+    "per_op_ns_mean": 11260.73,
+    "per_op_ns_median": 12497.05,
+    "per_op_ns_std_dev": 2253.5067882204294,
+    "per_op_ns_min": 7830.3,
+    "per_op_ns_max": 13653.0,
+    "per_op_ns_ci95": [
+      9863.992022008257,
+      12657.467977991742
+    ],
+    "per_op_ns_cv_pct": 20.01208436948963,
+    "throughput_ops_s": 80018.88445673179,
+    "total_ns_median": 624851337.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      12847.4,
+      12294.3,
+      12699.8,
+      12963.1,
+      8320.5,
+      13242.3,
+      9392.4,
+      9364.2,
+      13653.0,
+      7830.3
+    ],
+    "warnings": [
+      "High coefficient of variation (20.0%). Results are unstable. Consider increasing sample count or reducing system load."
+    ]
+  },
+  "reference_performance": {
+    "per_op_ns": 45313.7,
+    "per_op_ns_mean": 46524.71,
+    "per_op_ns_median": 45313.7,
+    "per_op_ns_std_dev": 4853.730124450679,
+    "per_op_ns_min": 40812.5,
+    "per_op_ns_max": 53164.9,
+    "per_op_ns_ci95": [
+      43516.336901156814,
+      49533.083098843184
+    ],
+    "per_op_ns_cv_pct": 10.432585446423372,
+    "throughput_ops_s": 22068.38108563194,
+    "total_ns_median": 2265685558.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      43524.1,
+      53164.9,
+      43285.5,
+      44774.0,
+      40852.4,
+      52529.2,
+      45853.4,
+      40812.5,
+      53112.9,
+      47338.2
+    ],
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T00:47:25Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

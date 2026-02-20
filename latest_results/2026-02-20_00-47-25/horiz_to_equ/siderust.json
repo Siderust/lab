@@ -1,0 +1,165 @@
+{
+  "experiment": "horiz_to_equ",
+  "candidate_library": "siderust",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Horizontal \u2192 Equatorial (AltAz \u2192 RA/Dec)",
+    "what": "Converts horizontal (azimuth, altitude) coordinates to equatorial RA/Dec via hour angle and GAST computation.",
+    "why": "Reverse of equ_horizontal. Tests the inverse spherical trig path and GAST model.",
+    "units": "Angular separation in arcseconds.",
+    "interpret": "Same spherical trig across all libraries. Differences arise from GAST model only."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "Spherical trig via eraAe2hd; GAST via eraGst06a; no refraction",
+      "siderust": "Spherical trig via FromHorizontal::to_equatorial; GAST IAU 2006",
+      "astropy": "eraAe2hd via bundled ERFA; GAST via eraGst06a",
+      "libnova": "ln_get_equ_from_hrz; convention fix: az = (input_az - 180) % 360",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-parity",
+    "accuracy_interpretation": "accuracy vs ERFA reference (same spherical trig model)",
+    "note": "Inverse of equ_horizontal. Same spherical trig, same GAST dependencies. Azimuth convention: ERFA 0\u00b0=North CW; libnova 0\u00b0=South. No atmospheric refraction applied."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "bb6c81e92b74dcf3"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "siderust",
+    "angular_sep_arcsec": {
+      "p50": 0.0,
+      "p90": 0.003073585126505738,
+      "p99": 0.00434670577101264,
+      "max": 0.005323605600495954,
+      "mean": 0.000895605771111938,
+      "rms": 0.001770982573578651
+    },
+    "signed_ra_error_arcsec": {
+      "p50": 0.001790982584995408,
+      "p90": 0.0029070268404399148,
+      "p99": 0.0035483662135786078,
+      "max": 0.0044621552820936486,
+      "mean": -5.950419477149048e-05,
+      "rms": 0.0019496770111538735
+    },
+    "signed_dec_error_arcsec": {
+      "p50": 2.289999370653732e-11,
+      "p90": 9.159997482614928e-11,
+      "p99": 2.752579243525782e-10,
+      "max": 6.182998300765077e-10,
+      "mean": -1.722821987465061e-12,
+      "rms": 7.474861435093675e-11
+    },
+    "nan_count": 0
+  },
+  "performance": {
+    "per_op_ns": 3569.55,
+    "per_op_ns_mean": 3598.9,
+    "per_op_ns_median": 3569.55,
+    "per_op_ns_std_dev": 73.35832907342186,
+    "per_op_ns_min": 3536.7,
+    "per_op_ns_max": 3747.4,
+    "per_op_ns_ci95": [
+      3553.432036577632,
+      3644.367963422368
+    ],
+    "per_op_ns_cv_pct": 2.0383541935986513,
+    "throughput_ops_s": 280147.3575100503,
+    "total_ns_median": 178477605.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      3621.5,
+      3747.4,
+      3691.0,
+      3582.7,
+      3536.9,
+      3632.3,
+      3536.7,
+      3538.4,
+      3556.4,
+      3545.7
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 81674.3,
+    "per_op_ns_mean": 82006.91,
+    "per_op_ns_median": 81674.3,
+    "per_op_ns_std_dev": 688.9531986201164,
+    "per_op_ns_min": 81460.2,
+    "per_op_ns_max": 83364.9,
+    "per_op_ns_ci95": [
+      81579.89238345601,
+      82433.927616544
+    ],
+    "per_op_ns_cv_pct": 0.8401160324417983,
+    "throughput_ops_s": 12243.75354303618,
+    "total_ns_median": 4083716036.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      81593.2,
+      81460.2,
+      81763.9,
+      81518.4,
+      81597.0,
+      83064.1,
+      83364.9,
+      82370.0,
+      81751.6,
+      81585.8
+    ],
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T01:02:41Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

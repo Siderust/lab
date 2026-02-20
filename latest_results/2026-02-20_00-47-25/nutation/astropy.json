@@ -1,0 +1,205 @@
+{
+  "experiment": "nutation",
+  "candidate_library": "astropy",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Nutation (Mean of Date \u2192 True of Date)",
+    "what": "Applies the nutation matrix to rotate from mean equator/equinox of date to true equator/equinox of date.",
+    "why": "Nutation oscillates \u00b19 arcsec. Isolating it reveals IAU 2000A vs 2000B differences.",
+    "units": "Angular error in mas (milliarcseconds).",
+    "interpret": "ERFA/Astropy use IAU 2000A (1365 terms). Siderust uses IAU 2000B (77 terms). libnova uses IAU 1980 (69 terms). Expect ~1 mas difference (2000A vs 2000B)."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "IAU 2000A nutation (1365 terms) via eraNum06a",
+      "siderust": "IAU 2000B nutation (77 terms) via frame rotation provider",
+      "astropy": "IAU 2000A nutation via bundled ERFA (erfa.num06a)",
+      "libnova": "IAU 1980 nutation (69 terms) via ln_get_equ_nut / ln_nutation",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-mismatch",
+    "accuracy_interpretation": "agreement with ERFA baseline (nutation models differ in term count)",
+    "note": "IAU 2000A (ERFA/Astropy) has 1365 terms, 2000B (Siderust) has 77 terms (~1 mas difference), IAU 1980 (libnova) has 69 terms (~tens of mas difference)."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "72b9103f2a578f36"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "astropy",
+    "angular_error_mas": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 4.3467057710126396,
+      "max": 5.323605600495954,
+      "min": 0.0,
+      "mean": 0.12510294763577387,
+      "rms": 0.6803670707522428
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 1.4901161193847656e-08,
+      "max": 2.1073424255447017e-08,
+      "min": 0.0,
+      "mean": 3.997747171632378e-10,
+      "rms": 2.4934411839666234e-09
+    },
+    "matrix_frobenius": null,
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2464750.105272297,
+        "angular_error_mas": 5.323605600495954
+      },
+      {
+        "jd_tt": 2465076.0407629237,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2469834.5718260407,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2475756.11537119,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2473573.488921797,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2466302.3561218064,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2461523.1621695696,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2466445.7912439196,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2483160.0369987004,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2478705.003335557,
+        "angular_error_mas": 4.3467057710126396
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 78105.40291,
+    "per_op_ns_mean": 78269.813638,
+    "per_op_ns_median": 78105.40291,
+    "per_op_ns_std_dev": 280.751991225875,
+    "per_op_ns_min": 78051.12754,
+    "per_op_ns_max": 78779.43196,
+    "per_op_ns_ci95": [
+      78095.80175101933,
+      78443.82552498068
+    ],
+    "per_op_ns_cv_pct": 0.35869766155872107,
+    "throughput_ops_s": 12803.211592830383,
+    "total_ns_median": 3905270145.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      78516.5888,
+      78063.46504,
+      78285.21656,
+      78065.82932,
+      78051.12754,
+      78059.24862,
+      78666.42272,
+      78125.87166,
+      78084.93416,
+      78779.43196
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 78648.7,
+    "per_op_ns_mean": 78674.32,
+    "per_op_ns_median": 78648.7,
+    "per_op_ns_std_dev": 141.45027237709817,
+    "per_op_ns_min": 78495.8,
+    "per_op_ns_max": 78921.0,
+    "per_op_ns_ci95": [
+      78586.6482128729,
+      78761.99178712712
+    ],
+    "per_op_ns_cv_pct": 0.17979217663031363,
+    "throughput_ops_s": 12714.768330563633,
+    "total_ns_median": 3932433717.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      78551.6,
+      78791.5,
+      78595.5,
+      78653.4,
+      78865.2,
+      78671.5,
+      78921.0,
+      78495.8,
+      78644.0,
+      78553.7
+    ],
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T01:00:47Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

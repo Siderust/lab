@@ -1,0 +1,165 @@
+{
+  "experiment": "kepler_solver",
+  "candidate_library": "libnova",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Kepler Equation Solver (M \u2192 E \u2192 \u03bd)",
+    "what": "Solves Kepler's equation M = E - e\u00b7sin(E) for the eccentric anomaly E, then computes the true anomaly \u03bd. Tests convergence across eccentricities.",
+    "why": "Kepler's equation is fundamental to orbital mechanics. Different solvers (Newton-Raphson vs bisection) have different convergence properties.",
+    "units": "E and \u03bd errors in radians. Self-consistency residual in radians.",
+    "interpret": "Lower residual = better convergence. Libnova's bisection method converges to ~1e-6 deg, while Newton-Raphson methods reach ~1e-15 rad."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "Newton-Raphson iteration (100 iters, tol 1e-15)",
+      "siderust": "solve_keplers_equation (internal algorithm)",
+      "astropy": "Newton-Raphson iteration in Python (100 iters, tol 1e-15)",
+      "libnova": "Sinnott bisection via ln_solve_kepler (internal convergence ~1e-6 deg)",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-parity",
+    "accuracy_interpretation": "accuracy vs ERFA reference (same equation, different solvers)",
+    "note": "Kepler's equation M = E - e*sin(E) is solved for E given (M, e). Self-consistency M_reconstructed = E - e*sin(E) is the primary metric. libnova uses a bisection method with lower convergence tolerance."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "8fb3fd953d3dcaa5"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "libnova",
+    "E_error_rad": {
+      "p50": 0.0,
+      "p90": 4.440892098500626e-16,
+      "p99": 1.7763568394002505e-15,
+      "max": 7.105427357601002e-15,
+      "mean": 9.541675793967209e-17,
+      "rms": 4.721823477192954e-16
+    },
+    "nu_error_rad": {
+      "p50": 0.0,
+      "p90": 4.440892098500626e-16,
+      "p99": 1.7763568394002505e-15,
+      "max": 2.930988785010413e-14,
+      "mean": 1.5828480873169902e-16,
+      "rms": 1.4020050012845008e-15
+    },
+    "consistency_error_rad": {
+      "p50": 0.0,
+      "p90": 8.881784197001252e-16,
+      "p99": 8.881784197001252e-16,
+      "max": 1.7763568394002505e-15,
+      "mean": 1.8833813615803557e-16,
+      "rms": 3.5691280894336514e-16
+    },
+    "nan_count": 4
+  },
+  "performance": {
+    "per_op_ns": 1398.95,
+    "per_op_ns_mean": 1420.8600000000001,
+    "per_op_ns_median": 1398.95,
+    "per_op_ns_std_dev": 85.68776912592472,
+    "per_op_ns_min": 1340.6,
+    "per_op_ns_max": 1628.3,
+    "per_op_ns_ci95": [
+      1367.750170460911,
+      1473.9698295390892
+    ],
+    "per_op_ns_cv_pct": 6.0306975441580954,
+    "throughput_ops_s": 714821.8306587083,
+    "total_ns_median": 69946777.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      1474.7,
+      1350.2,
+      1459.7,
+      1374.6,
+      1407.0,
+      1390.9,
+      1424.7,
+      1357.9,
+      1628.3,
+      1340.6
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 232.55,
+    "per_op_ns_mean": 243.75,
+    "per_op_ns_median": 232.55,
+    "per_op_ns_std_dev": 23.83719083001742,
+    "per_op_ns_min": 231.3,
+    "per_op_ns_max": 291.9,
+    "per_op_ns_ci95": [
+      228.9755560555848,
+      258.52444394441517
+    ],
+    "per_op_ns_cv_pct": 9.779360340519966,
+    "throughput_ops_s": 4300150.505267684,
+    "total_ns_median": 11629030.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      231.8,
+      232.6,
+      232.1,
+      233.2,
+      285.8,
+      232.5,
+      291.9,
+      231.3,
+      235.0,
+      231.3
+    ],
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T01:00:27Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

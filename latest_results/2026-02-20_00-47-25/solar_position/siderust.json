@@ -1,0 +1,173 @@
+{
+  "experiment": "solar_position",
+  "candidate_library": "siderust",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Sun Geocentric Position",
+    "what": "Computes the apparent geocentric RA/Dec of the Sun at given epochs using VSOP87 planetary theory.",
+    "why": "Sun position is needed for solar observations, shadow calculations, and as input to other transforms.",
+    "units": "Angular separation in arcseconds between reference and candidate Sun positions.",
+    "interpret": "ERFA uses direct VSOP87 via epv00. Siderust uses its own VSOP87 implementation with aberration+FK5 corrections."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "VSOP87 (analytic, all libraries)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "VSOP87 via eraEpv00: heliocentric Earth \u2192 geocentric Sun (negate); BCRS equatorial output",
+      "siderust": "Geometric heliocentric-ecliptic center transformed to geocentric ICRS (no aberration)",
+      "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
+      "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)",
+      "anise": "SPK translation SUN_J2000 \u2192 EARTH_J2000 (DE440 ephemeris, geometric state vector)"
+    },
+    "model_parity_class": "model-mismatch",
+    "accuracy_interpretation": "agreement with ERFA baseline (VSOP87 truncation levels differ)",
+    "note": "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). Differences reflect VSOP87 truncation levels and aberration correction details."
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "e97011714aaedc38"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "siderust",
+    "angular_sep_arcsec": {
+      "p50": 0.08989907730699445,
+      "p90": 0.10871978910893151,
+      "p99": 0.11983080263142662,
+      "max": 0.12709934168236545,
+      "mean": 0.09153557898604171,
+      "rms": 0.09228733004516528
+    },
+    "signed_ra_error_arcsec": {
+      "p50": 0.09303010242471621,
+      "p90": 0.11296120110145648,
+      "p99": 0.12275538001411927,
+      "max": 0.12932348107323297,
+      "mean": 0.09512820615543136,
+      "rms": 0.09587943361335109
+    },
+    "signed_dec_error_arcsec": {
+      "p50": 0.007363474679242104,
+      "p90": 0.01163585370828078,
+      "p99": 0.014040869856815165,
+      "max": 0.01631323249503589,
+      "mean": -0.0006696238940789796,
+      "rms": 0.007961994009717588
+    },
+    "nan_count": 0,
+    "dist_au_diff": {
+      "p50": 7.308084359891609e-09,
+      "p90": 1.8130036449903743e-08,
+      "p99": 2.702051519976045e-08,
+      "max": 3.775754842116896e-08,
+      "mean": 1.2914262725871594e-09,
+      "rms": 1.0878215704030296e-08
+    }
+  },
+  "performance": {
+    "per_op_ns": 19172.25,
+    "per_op_ns_mean": 19340.26,
+    "per_op_ns_median": 19172.25,
+    "per_op_ns_std_dev": 3262.2786886878116,
+    "per_op_ns_min": 15926.6,
+    "per_op_ns_max": 24221.4,
+    "per_op_ns_ci95": [
+      17318.278720377748,
+      21362.24127962225
+    ],
+    "per_op_ns_cv_pct": 16.867811956446353,
+    "throughput_ops_s": 52158.718981861806,
+    "total_ns_median": 958612701.5,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      22007.5,
+      19172.1,
+      23171.1,
+      24221.4,
+      19172.4,
+      21667.1,
+      16011.6,
+      16019.3,
+      16033.5,
+      15926.6
+    ],
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 38154.3,
+    "per_op_ns_mean": 38148.93,
+    "per_op_ns_median": 38154.3,
+    "per_op_ns_std_dev": 4213.550372323929,
+    "per_op_ns_min": 32866.2,
+    "per_op_ns_max": 43602.0,
+    "per_op_ns_ci95": [
+      35537.344422370756,
+      40760.515577629245
+    ],
+    "per_op_ns_cv_pct": 11.045002762394459,
+    "throughput_ops_s": 26209.365654723057,
+    "total_ns_median": 1907714207.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      38181.7,
+      32983.6,
+      42839.1,
+      37904.4,
+      43602.0,
+      32866.2,
+      43198.8,
+      38870.4,
+      38126.9,
+      32916.2
+    ],
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-02-20T00:49:36Z",
+    "git_shas": {
+      "lab": "477c87ed123c",
+      "siderust": "e5f11ab44d53",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}
