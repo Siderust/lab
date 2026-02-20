@@ -16,8 +16,8 @@
 use siderust::calculus::kepler_equations::solve_keplers_equation;
 use siderust::calculus::lunar::meeus_ch47;
 use siderust::coordinates::cartesian;
-use siderust::coordinates::centers::{Geocentric, Heliocentric, ObserverSite};
-use siderust::coordinates::frames::{EquatorialTrueOfDate, ICRS};
+use siderust::coordinates::centers::{Geocentric, Geodetic, Heliocentric};
+use siderust::coordinates::frames::{ECEF, EquatorialTrueOfDate, ICRS};
 use siderust::coordinates::transform::ecliptic_of_date::FromEclipticTrueOfDate;
 use siderust::coordinates::transform::horizontal::FromHorizontal;
 use siderust::coordinates::transform::providers::frame_rotation;
@@ -265,7 +265,7 @@ fn run_equ_horizontal(lines: &mut impl Iterator<Item = String>) {
         let equatorial_direction = spherical_equ.to_cartesian();
 
         // Create observer site
-        let site = ObserverSite::new(
+        let site = Geodetic::<ECEF>::new(
             Degrees::new(obs_lon_rad.to_degrees()),
             Degrees::new(obs_lat_rad.to_degrees()),
             Meters::new(0.0),
@@ -656,7 +656,7 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
             Degrees::new(ra.to_degrees()),
         );
         let equatorial_direction = spherical_equ.to_cartesian();
-        let site = ObserverSite::new(
+        let site = Geodetic::<ECEF>::new(
             Degrees::new(lon.to_degrees()),
             Degrees::new(lat.to_degrees()),
             Meters::new(0.0),
@@ -678,7 +678,7 @@ fn run_equ_horizontal_perf(lines: &mut impl Iterator<Item = String>) {
             Degrees::new(ra.to_degrees()),
         );
         let equatorial_direction = spherical_equ.to_cartesian();
-        let site = ObserverSite::new(
+        let site = Geodetic::<ECEF>::new(
             Degrees::new(lon.to_degrees()),
             Degrees::new(lat.to_degrees()),
             Meters::new(0.0),

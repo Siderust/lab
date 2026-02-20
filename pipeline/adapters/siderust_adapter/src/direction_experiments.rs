@@ -4,9 +4,9 @@ use std::time::Instant;
 use qtty::{Degrees, Meters, Radians};
 
 use siderust::coordinates::cartesian;
-use siderust::coordinates::centers::ObserverSite;
+use siderust::coordinates::centers::Geodetic;
 use siderust::coordinates::frames::{
-    EclipticMeanJ2000, EclipticTrueOfDate, EquatorialMeanJ2000, EquatorialMeanOfDate,
+    ECEF, EclipticMeanJ2000, EclipticTrueOfDate, EquatorialMeanJ2000, EquatorialMeanOfDate,
     EquatorialTrueOfDate, Horizontal, ICRS,
 };
 use siderust::coordinates::transform::ecliptic_of_date::FromEclipticTrueOfDate;
@@ -482,7 +482,7 @@ pub fn run_horiz_to_equ(lines: &mut impl Iterator<Item = String>) {
 
         let jd_ut1 = JulianDate::new(jd_ut1_val);
         let jd_tt = JulianDate::new(jd_tt_val);
-        let site = ObserverSite::new(
+        let site = Geodetic::<ECEF>::new(
             Degrees::new(obs_lon_rad.to_degrees()),
             Degrees::new(obs_lat_rad.to_degrees()),
             Meters::new(0.0),
@@ -562,7 +562,7 @@ pub fn run_horiz_to_equ_perf(lines: &mut impl Iterator<Item = String>) {
         let (jd_ut1_v, jd_tt_v, az, alt, lon, lat) = params[i];
         let jd_ut1 = JulianDate::new(jd_ut1_v);
         let jd_tt = JulianDate::new(jd_tt_v);
-        let site = ObserverSite::new(
+        let site = Geodetic::<ECEF>::new(
             Degrees::new(lon.to_degrees()),
             Degrees::new(lat.to_degrees()),
             Meters::new(0.0),
@@ -583,7 +583,7 @@ pub fn run_horiz_to_equ_perf(lines: &mut impl Iterator<Item = String>) {
         let (jd_ut1_v, jd_tt_v, az, alt, lon, lat) = params[i];
         let jd_ut1 = JulianDate::new(jd_ut1_v);
         let jd_tt = JulianDate::new(jd_tt_v);
-        let site = ObserverSite::new(
+        let site = Geodetic::<ECEF>::new(
             Degrees::new(lon.to_degrees()),
             Degrees::new(lat.to_degrees()),
             Meters::new(0.0),

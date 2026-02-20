@@ -31,7 +31,7 @@ ELP_OBJS := $(patsubst $(LIBNOVA_SRC_DIR)/elp/%.c, build/libnova/elp/%.o, $(ELP_
 LIBNOVA_OBJS := $(patsubst $(LIBNOVA_SRC_DIR)/%.c, build/libnova/%.o, $(LIBNOVA_SRCS))
 
 CC       := gcc
-CFLAGS   := -O3 -Wall -std=c11 -D_GNU_SOURCE -I$(LIBNOVA_SRC_DIR) \
+CFLAGS   := -O3 -Wall -std=c11 -D_GNU_SOURCE -I. -I$(LIBNOVA_SRC_DIR) \
              -Wno-unused-function -Wno-unused-variable -Wno-sign-compare \
              -Wno-misleading-indentation -Wno-implicit-function-declaration \
              -Wno-int-conversion
