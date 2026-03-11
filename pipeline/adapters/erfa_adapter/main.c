@@ -293,7 +293,7 @@ static void run_solar_position(void) {
 /* ------------------------------------------------------------------ */
 /* Experiment: lunar_position                                          */
 /* Geocentric Moon RA/Dec — simplified Meeus Ch.47 (major terms).      */
-/* ERFA has no dedicated Moon function; this is approximate (~10').     */
+/* ERFA does provide eraMoon98; this benchmark uses Meeus for parity.   */
 /* Input per line: jd_tt                                               */
 /* ------------------------------------------------------------------ */
 

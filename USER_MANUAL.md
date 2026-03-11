@@ -376,6 +376,13 @@ Implemented today:
 - `lunar_position` — Moon position (model-dependent)
 - `kepler_solver` — Kepler solver residuals/self-consistency
 
+Solar/lunar model note:
+
+- ERFA is not limited to frame transforms. It also includes approximate ephemeris routines such as `eraEpv00`, `eraMoon98`, and `eraPlan94`.
+- In this lab, `solar_position` for ERFA/Astropy is derived from `eraEpv00` by negating the heliocentric Earth vector to obtain the geocentric Sun vector.
+- In this lab, `lunar_position` currently uses a simplified Meeus Chapter 47 model for parity across adapters. It does not currently call ERFA's `eraMoon98` directly.
+- Treat `solar_position` and `lunar_position` as model-dependent ephemeris benchmarks rather than pure IAU coordinate-transform benchmarks.
+
 Tools currently wired:
 
 - `erfa` (reference)

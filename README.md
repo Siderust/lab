@@ -40,6 +40,17 @@ Before comparing outputs, each experiment should explicitly lock down:
 
 Where libraries cannot be configured to the same model, run the experiment in named “modes” (e.g., *common-denominator* vs *high-fidelity*) and document the differences.
 
+### ERFA ephemeris note
+
+ERFA is not only a coordinate-transformation library. In addition to the IAU/SOFA astrometry routines, it also ships a small set of approximate ephemeris helpers such as `eraEpv00` (Earth heliocentric/barycentric state from a simplified VSOP2000 solution), `eraMoon98` (approximate geocentric Moon state), and `eraPlan94` (approximate planetary states).
+
+This matters for the current lab experiments:
+
+- `solar_position` in the ERFA-based adapters is computed from `eraEpv00`, with the geocentric Sun vector taken as approximately `-Earth_heliocentric`.
+- `lunar_position` is currently benchmarked using a simplified Meeus Chapter 47 model across adapters for parity. The lab does not currently benchmark ERFA's `eraMoon98` directly.
+
+Interpret solar/lunar results as model-dependent ephemeris comparisons, not as pure “IAU transform only” tests.
+
 ### Accuracy / correctness
 
 Core statistics to report per experiment (and per library):
