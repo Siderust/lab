@@ -110,7 +110,7 @@ export default function RunOverview() {
       <section>
         <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
           <Target className="h-5 w-5 text-orange-400" />
-          Siderust vs ERFA Scoreboard
+          Siderust Accuracy & Speed Scoreboard
         </h2>
         <SiderustScoreboard analytics={analytics} runId={run.id} />
       </section>
@@ -288,11 +288,14 @@ function SiderustScoreboard({
   analytics: ReturnType<typeof analyzeRun>;
   runId: string;
 }) {
-  // For each experiment, find Siderust's accuracy and performance relative to ERFA
+  // For each experiment, find Siderust's accuracy and performance
   const rows = analytics.experiments.map((exp) => {
     const siderustAcc = exp.accuracy.find((a) => a.library === "siderust");
     const siderustPerf = exp.performance.find((p) => p.library === "siderust");
-    const erfaPerf = exp.performance.find((p) => p.library === "erfa" || p.isReference);
+    // For speed comparison, find ERFA performance (either as reference or candidate)
+    const erfaPerf = exp.performance.find(
+      (p) => p.library === "erfa" || (p.isReference && exp.referenceLibrary === "erfa")
+    );
 
     const speedup =
       erfaPerf?.perOpNs != null && siderustPerf?.perOpNs != null && siderustPerf.perOpNs > 0
@@ -326,6 +329,7 @@ function SiderustScoreboard({
       name: exp.name,
       displayName: exp.displayName,
       unit: exp.unit,
+      referenceLibrary: exp.referenceLibrary,
       p99: siderustAcc?.p99 ?? null,
       max: siderustAcc?.max ?? null,
       nsOp: siderustPerf?.perOpNs ?? null,
@@ -341,9 +345,9 @@ function SiderustScoreboard({
     <div className="rounded-xl border border-orange-800/40 bg-orange-950/10 overflow-x-auto">
       <div className="border-b border-orange-800/30 px-4 py-3">
         <p className="text-xs text-orange-200/70">
-          How Siderust compares to ERFA (the reference) across all experiments.
+          How Siderust compares across all experiments.
           <span className="text-orange-200/50 ml-1">
-            Grades: Excellent / Good / Fair / Poor based on error magnitude.
+            Accuracy reference varies per experiment (ERFA or JPL Horizons). Speed vs ERFA where available.
           </span>
         </p>
       </div>
@@ -351,6 +355,7 @@ function SiderustScoreboard({
         <thead>
           <tr className="border-b border-orange-800/20 text-left text-xs uppercase text-gray-400">
             <th className="px-4 py-2.5">Experiment</th>
+            <th className="px-4 py-2.5">Reference</th>
             <th className="px-4 py-2.5 text-center">Accuracy Grade</th>
             <th className="px-4 py-2.5 text-right">p99 Error</th>
             <th className="px-4 py-2.5 text-right">Max Error</th>
@@ -370,6 +375,13 @@ function SiderustScoreboard({
                 >
                   {row.displayName}
                 </Link>
+              </td>
+              <td className="px-4 py-2.5 text-xs text-gray-400">
+                {row.referenceLibrary === "jpl_horizons" ? (
+                  <span className="text-purple-300">JPL Horizons</span>
+                ) : (
+                  <span>{row.referenceLibrary}</span>
+                )}
               </td>
               <td className="px-4 py-2.5 text-center">
                 <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${row.gradeColor}`}>

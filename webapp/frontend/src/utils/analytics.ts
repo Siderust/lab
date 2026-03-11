@@ -100,12 +100,12 @@ const DISPLAY_NAMES: Record<string, string> = {
 export function analyzeRun(run: RunDetail): RunAnalytics {
   const candidateLibs = new Set<string>();
   const allLibs = new Set<string>();
-  let referenceLibrary = "erfa";
+  const referenceLibraries = new Set<string>();
   const experiments: ExperimentAnalytics[] = [];
 
   for (const [expName, results] of Object.entries(run.experiments)) {
     const refLib = results[0]?.reference_library ?? "erfa";
-    referenceLibrary = refLib;
+    referenceLibraries.add(refLib);
     allLibs.add(refLib);
 
     const performance: LibPerformance[] = [];
@@ -220,6 +220,11 @@ export function analyzeRun(run: RunDetail): RunAnalytics {
   }
   const overallBestTradeoff =
     Object.entries(combined).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  // Determine global reference library ("erfa" if uniform, else mixed)
+  const referenceLibrary = referenceLibraries.size === 1
+    ? Array.from(referenceLibraries)[0]
+    : "mixed";
 
   return {
     experiments: experiments.sort((a, b) => a.name.localeCompare(b.name)),

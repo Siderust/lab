@@ -163,7 +163,14 @@ class RunMetadata(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ExperimentResult(BaseModel, extra="allow"):
-    """One JSON file from results/<date>/<experiment>/<library>.json."""
+    """One JSON file from results/<date>/<experiment>/<library>.json.
+
+    reference_library may be "erfa" (adapter-backed) or "jpl_horizons"
+    (external ephemeris reference, e.g. for solar_position / lunar_position).
+
+    reference_performance is populated only when the reference is an adapter
+    (e.g. ERFA).  For external references it is empty.
+    """
 
     experiment: str
     candidate_library: str

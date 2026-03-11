@@ -192,6 +192,7 @@ export const LIBRARY_COLORS: Record<string, string> = {
   astropy: "#22c55e",    // green
   libnova: "#ef4444",    // red
   anise: "#06b6d4",      // cyan
+  jpl_horizons: "#a855f7", // purple
 };
 
 export const ALL_EXPERIMENTS = [

@@ -54,6 +54,7 @@ export default function ExperimentDetail() {
     return <p className="text-red-400">Failed to load experiment.</p>;
 
   const ref = results[0]?.reference_library ?? "erfa";
+  const refDisplay = ref === "jpl_horizons" ? "JPL Horizons" : ref;
   const mode = results[0]?.alignment?.mode ?? "common_denominator";
   const desc = results[0]?.description as Record<string, string> | undefined;
 
@@ -61,7 +62,7 @@ export default function ExperimentDetail() {
     <div>
       <Header
         title={desc?.title ?? experiment!.replace(/_/g, " ")}
-        subtitle={`Reference: ${ref} \u2014 Mode: ${mode}`}
+        subtitle={`Reference: ${refDisplay} \u2014 Mode: ${mode}`}
         actions={
           <Link
             to={`/runs/${runId}`}

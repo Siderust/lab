@@ -34,6 +34,10 @@ from pathlib import Path
 
 import numpy as np
 
+# Import Horizons client from same directory
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from horizons_client import fetch_horizons_reference
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -108,23 +112,23 @@ EXPERIMENT_DESCRIPTIONS = {
     },
     "solar_position": {
         "title": "Sun Geocentric Position",
-        "what": "Computes the apparent geocentric RA/Dec of the Sun at given epochs using "
-                "VSOP87 planetary theory.",
+        "what": "Computes astrometric geocentric RA/Dec of the Sun at given epochs. "
+                "Accuracy reference is JPL Horizons (astrometric geocentric, ICRF, Earth geocenter, TT).",
         "why": "Sun position is needed for solar observations, shadow calculations, and "
                "as input to other transforms.",
-        "units": "Angular separation in arcseconds between reference and candidate Sun positions.",
-        "interpret": "ERFA uses direct VSOP87 via epv00. Siderust uses its own VSOP87 "
-                     "implementation with aberration+FK5 corrections.",
+        "units": "Angular separation in arcseconds between JPL Horizons reference and candidate Sun positions.",
+        "interpret": "Lower error = closer to JPL Horizons DE441 ephemeris. "
+                     "All libraries are compared as candidates against the Horizons reference.",
     },
     "lunar_position": {
         "title": "Moon Geocentric Position",
-        "what": "Computes geocentric RA/Dec of the Moon. Note: ERFA/Astropy use simplified "
-                "Meeus (~10 arcmin accuracy) while Siderust/libnova use full ELP 2000.",
-        "why": "Moon position accuracy varies significantly between libraries because no "
-               "standard 'reference' implementation exists in ERFA.",
-        "units": "Angular separation in arcseconds. Expect ~arcminute differences due to model gap.",
-        "interpret": "Large differences (arcminutes) reflect different ephemeris models, not bugs. "
-                     "Cross-library comparison is more meaningful than ERFA-as-truth here.",
+        "what": "Computes astrometric geocentric RA/Dec of the Moon at given epochs. "
+                "Accuracy reference is JPL Horizons (astrometric geocentric, ICRF, Earth geocenter, TT).",
+        "why": "Moon position accuracy varies significantly between libraries. "
+               "JPL Horizons (DE441) provides a high-accuracy external reference.",
+        "units": "Angular separation in arcseconds between JPL Horizons reference and candidate positions.",
+        "interpret": "Lower error = closer to JPL Horizons DE441 ephemeris. "
+                     "Differences measure absolute ephemeris accuracy, not cross-library agreement.",
     },
     "kepler_solver": {
         "title": "Kepler Equation Solver (M → E → ν)",
@@ -1241,39 +1245,52 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
 
     elif experiment == "solar_position":
         base["models"] = {
+            "jpl_horizons": "JPL Horizons astrometric geocentric RA/Dec (DE441, ICRF, Earth geocenter, TT)",
             "erfa": "VSOP87 via eraEpv00: heliocentric Earth → geocentric Sun (negate); BCRS equatorial output",
             "siderust": "Geometric heliocentric-ecliptic center transformed to geocentric ICRS (no aberration)",
             "astropy": "VSOP87 via erfa.epv00 (same as ERFA)",
             "libnova": "VSOP87 via ln_get_solar_equ_coords (different truncation/corrections)",
             "anise": "SPK translation SUN_J2000 → EARTH_J2000 (DE440 ephemeris, geometric state vector)",
         }
-        base["model_parity_class"] = "model-mismatch"
-        base["accuracy_interpretation"] = "agreement with ERFA baseline (VSOP87 truncation levels differ)"
-        base["ephemeris_source"] = "VSOP87 (analytic, all libraries)"
+        base["model_parity_class"] = "external-reference"
+        base["accuracy_interpretation"] = "agreement with JPL Horizons DE441 astrometric geocentric reference"
+        base["ephemeris_source"] = "JPL Horizons (DE441) for reference; VSOP87/SPK for candidates"
+        base["reference_mode"] = "astrometric geocentric RA/Dec"
+        base["reference_frame"] = "ICRF"
+        base["reference_center"] = "Earth geocenter (500@399)"
+        base["reference_time_scale"] = "TT"
         base["note"] = (
-            "ERFA epv00 returns BCRS-aligned equatorial (no obliquity rotation). "
-            "Differences reflect VSOP87 truncation levels and aberration correction details."
+            "Accuracy reference is JPL Horizons astrometric geocentric RA/Dec (DE441). "
+            "All libraries (ERFA, Siderust, Astropy, libnova, ANISE) are compared as candidates. "
+            "Differences measure absolute ephemeris accuracy against DE441."
         )
 
     elif experiment == "lunar_position":
         base["models"] = {
+            "jpl_horizons": "JPL Horizons astrometric geocentric RA/Dec (DE441, ICRF, Earth geocenter, TT)",
             "erfa": "Simplified Meeus Ch.47 (major terms only, ~10' accuracy)",
             "siderust": "Simplified Meeus Ch.47 (major terms only), centralized in siderust astro module",
             "astropy": "Simplified Meeus Ch.47 (same algorithm as ERFA adapter)",
             "libnova": "ELP 2000-82B via ln_get_lunar_equ_coords (full model)",
             "anise": "SPK translation MOON_J2000 → EARTH_J2000 (DE440 ephemeris, geometric state vector)",
         }
-        base["model_parity_class"] = "model-mismatch"
+        base["model_parity_class"] = "external-reference"
         base["accuracy_interpretation"] = (
-            "agreement with ERFA baseline (ERFA uses simplified Meeus, "
-            "libnova uses full ELP 2000 — arcminute-level differences are expected)"
+            "agreement with JPL Horizons DE441 astrometric geocentric reference "
+            "(ERFA/Siderust/Astropy use simplified Meeus ~10', libnova uses ELP 2000, ANISE uses DE440)"
         )
+        base["reference_mode"] = "astrometric geocentric RA/Dec"
+        base["reference_frame"] = "ICRF"
+        base["reference_center"] = "Earth geocenter (500@399)"
+        base["reference_time_scale"] = "TT"
         base["note"] = (
-            "ERFA, Astropy, and Siderust use the same simplified Meeus benchmark model (~10' accuracy). "
-            "libnova uses full ELP 2000, so arcminute-level differences vs reference are expected. "
-            "No dedicated ERFA Moon ephemeris exists; cross-library comparison is the primary metric."
+            "Accuracy reference is JPL Horizons astrometric geocentric RA/Dec (DE441). "
+            "All libraries are compared as candidates against DE441. "
+            "ERFA/Astropy/Siderust use simplified Meeus (~10' accuracy), "
+            "libnova uses full ELP 2000, ANISE uses DE440 SPK. "
+            "Range (delta) from Horizons is in AU, converted to km for Moon using 149597870.700 km/AU."
         )
-        base["ephemeris_source"] = "Meeus/ELP 2000 (varies by library)"
+        base["ephemeris_source"] = "JPL Horizons (DE441) for reference; Meeus/ELP 2000/DE440 for candidates"
 
     elif experiment == "kepler_solver":
         base["models"] = {
@@ -1878,6 +1895,143 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
     return results
 
 
+def _run_external_reference_experiment(exp_name: str, n: int, seed: int,
+                                        run_perf: bool = True,
+                                        perf_rounds: int = DEFAULT_PERF_ROUNDS,
+                                        input_gen_fn=None, input_fmt_fn=None,
+                                        perf_fmt_fn=None,
+                                        accuracy_fn=None, accuracy_kwargs=None):
+    """Experiment runner using an external reference (e.g. JPL Horizons) instead of ERFA.
+
+    All adapters (including ERFA) are treated as candidates.
+    Reference cases come from the external provider (Horizons).
+    reference_performance is left empty since the reference is external.
+    """
+    if accuracy_kwargs is None:
+        accuracy_kwargs = {}
+
+    all_adapters = [("erfa", [str(ERFA_BIN)])] + candidate_adapters()
+    total_steps = 3 + len(all_adapters) + (len(all_adapters) if run_perf else 0)
+    step = 0
+
+    progress(f"Starting experiment with external reference (N={n}, seed={seed})",
+             exp_name, "start", total_steps, step)
+
+    # 1) Generate inputs
+    step += 1
+    progress("Generating inputs...", exp_name, "generate_inputs", total_steps, step)
+    inputs = input_gen_fn(n, seed)
+    input_text = input_fmt_fn(*inputs) if not isinstance(inputs, str) else inputs
+
+    # Dataset fingerprint
+    ds_fp_data = {"experiment": exp_name, "n": n, "seed": seed}
+    if isinstance(inputs, tuple) and len(inputs) > 0:
+        for i, inp in enumerate(inputs):
+            if isinstance(inp, np.ndarray):
+                ds_fp_data[f"input_{i}_hash"] = hashlib.sha256(inp.tobytes()).hexdigest()[:12]
+    ds_fingerprint = dataset_fingerprint(ds_fp_data)
+
+    # Extract epochs for Horizons query
+    epochs = inputs[0] if isinstance(inputs, tuple) else inputs
+
+    # 2) Fetch external reference
+    step += 1
+    progress("Fetching JPL Horizons reference data...", exp_name, "horizons_fetch", total_steps, step)
+    try:
+        horizons_result = fetch_horizons_reference(exp_name, epochs)
+    except Exception as exc:
+        progress(f"Horizons fetch failed: {exc} — aborting experiment.", exp_name, "error")
+        print(f"  ✗ {exp_name}: Horizons fetch failed: {exc}", file=sys.stderr)
+        return []
+
+    ref_cases = horizons_result["cases"]
+    source_tag = horizons_result["source_tag"]
+    cache_key = horizons_result["cache_key"]
+    from_cache = horizons_result["from_cache"]
+
+    progress(f"Horizons reference loaded (source={source_tag}, cache={'hit' if from_cache else 'miss'})",
+             exp_name, "horizons_done")
+
+    # 3) Run all adapters as candidates
+    adapters = {}
+    for lib, cmd in all_adapters:
+        step += 1
+        progress(f"Running {lib} adapter (candidate)...", exp_name, f"adapter_{lib}", total_steps, step)
+        adapters[lib] = run_adapter(cmd, input_text, lib)
+
+    # 4) Compute accuracy against Horizons reference
+    step += 1
+    progress("Computing accuracy metrics vs Horizons...", exp_name, "accuracy", total_steps, step)
+    results = []
+    meta = run_metadata()
+    candidate_libs = ["erfa", "siderust", "astropy", "libnova", "anise"]
+
+    for lib in candidate_libs:
+        cand_data = adapters.get(lib)
+        if cand_data is None:
+            continue
+        if isinstance(cand_data, dict) and cand_data.get("skipped"):
+            progress(f"{lib}: skipped ({cand_data.get('reason', 'no reason')})", exp_name, f"skip_{lib}")
+            continue
+
+        accuracy = accuracy_fn(ref_cases, cand_data["cases"], "jpl_horizons", lib, **accuracy_kwargs)
+
+        alignment = alignment_checklist(exp_name)
+        alignment["horizons_source"] = source_tag
+        alignment["horizons_cache_key"] = cache_key
+        alignment["horizons_from_cache"] = from_cache
+
+        result = {
+            "experiment": exp_name,
+            "candidate_library": lib,
+            "reference_library": "jpl_horizons",
+            "description": EXPERIMENT_DESCRIPTIONS.get(exp_name, {}),
+            "alignment": alignment,
+            "inputs": {
+                "count": n, "seed": seed,
+                "dataset_fingerprint": ds_fingerprint,
+                "reference_source": "jpl_horizons",
+                "horizons_ephemeris": source_tag,
+                "horizons_mode": "astrometric geocentric RA/Dec",
+                "horizons_frame": "ICRF",
+                "horizons_center": "Earth geocenter (500@399)",
+                "horizons_time_scale": "TT",
+                "horizons_cache_key": cache_key,
+            },
+            "accuracy": accuracy,
+            "performance": {},
+            "reference_performance": {},
+            "benchmark_config": {
+                "perf_rounds": perf_rounds if run_perf else 0,
+                "perf_warmup": DEFAULT_PERF_WARMUP,
+                "perf_enabled": run_perf,
+            },
+            "run_metadata": meta,
+        }
+        results.append(result)
+
+    # 5) Performance measurement (multi-sample) — no reference_performance for external refs
+    if run_perf and perf_fmt_fn is not None:
+        perf_n = max(MIN_PERF_N, min(n, 10000))
+        progress(f"Running performance tests (N={perf_n}, {perf_rounds} rounds)...",
+                 exp_name, "performance", total_steps, step + 1)
+
+        perf_inputs = input_gen_fn(perf_n, seed)
+        perf_input = perf_fmt_fn(*perf_inputs) if not isinstance(perf_inputs, str) else perf_inputs
+
+        for lib, cmd in all_adapters:
+            step += 1
+            progress(f"Timing {lib} ({perf_rounds} rounds)...", exp_name, f"perf_{lib}", total_steps, step)
+            perf_data = run_multi_sample_perf(cmd, perf_input, f"{lib}_perf", rounds=perf_rounds)
+            if perf_data:
+                for r in results:
+                    if r["candidate_library"] == lib:
+                        r["performance"] = perf_data
+
+    progress("Experiment complete.", exp_name, "done", total_steps, total_steps)
+    return results
+
+
 def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = True,
                              perf_rounds: int = DEFAULT_PERF_ROUNDS,
                              input_gen_fn=None, input_fmt_fn=None, perf_fmt_fn=None,
@@ -2032,12 +2186,12 @@ def run_experiment_equ_horizontal(n: int, seed: int, run_perf: bool = True,
 
 def run_experiment_solar_position(n: int, seed: int, run_perf: bool = True,
                                    perf_rounds: int = DEFAULT_PERF_ROUNDS):
-    """Run the solar_position experiment: geocentric Sun RA/Dec."""
+    """Run the solar_position experiment: geocentric Sun RA/Dec vs JPL Horizons."""
     def _solar_gen(n, seed):
         epochs = generate_solar_position_inputs(n, seed)
         return (epochs,)
 
-    return _run_generic_experiment(
+    return _run_external_reference_experiment(
         exp_name="solar_position", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
         input_gen_fn=_solar_gen,
         input_fmt_fn=lambda epochs: format_solar_position_input(epochs),
@@ -2049,12 +2203,12 @@ def run_experiment_solar_position(n: int, seed: int, run_perf: bool = True,
 
 def run_experiment_lunar_position(n: int, seed: int, run_perf: bool = True,
                                    perf_rounds: int = DEFAULT_PERF_ROUNDS):
-    """Run the lunar_position experiment: geocentric Moon RA/Dec."""
+    """Run the lunar_position experiment: geocentric Moon RA/Dec vs JPL Horizons."""
     def _lunar_gen(n, seed):
         epochs = generate_lunar_position_inputs(n, seed)
         return (epochs,)
 
-    return _run_generic_experiment(
+    return _run_external_reference_experiment(
         exp_name="lunar_position", n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
         input_gen_fn=_lunar_gen,
         input_fmt_fn=lambda epochs: format_lunar_position_input(epochs),
@@ -2378,27 +2532,28 @@ def main():
             print(f"{'─'*70}")
             for r in results:
                 lib = r.get("candidate_library", "?")
+                ref = r.get("reference_library", "erfa")
                 acc = r.get("accuracy", {})
 
                 ang = acc.get("angular_error_mas", {})
                 if ang.get("p50") is not None:
-                    print(f"  {lib} vs erfa:")
+                    print(f"  {lib} vs {ref}:")
                     print(f"    Angular error (mas): p50={ang['p50']:.3f}  p99={ang['p99']:.3f}  max={ang['max']:.3f}")
 
                 gmst = acc.get("gmst_error_arcsec", {})
                 if gmst.get("p50") is not None:
-                    print(f"  {lib} vs erfa:")
+                    print(f"  {lib} vs {ref}:")
                     print(f"    GMST error (arcsec): p50={gmst['p50']:.6f}  p99={gmst['p99']:.6f}  max={gmst['max']:.6f}")
 
                 sep = acc.get("angular_sep_arcsec", {})
                 if sep.get("p50") is not None:
-                    print(f"  {lib} vs erfa:")
+                    print(f"  {lib} vs {ref}:")
                     print(f"    Angular sep (arcsec): p50={sep['p50']:.4f}  p99={sep['p99']:.4f}  max={sep['max']:.4f}")
 
                 E_err = acc.get("E_error_rad", {})
                 if E_err.get("p50") is not None:
                     con = acc.get("consistency_error_rad", {})
-                    print(f"  {lib} vs erfa:")
+                    print(f"  {lib} vs {ref}:")
                     print(f"    E error (rad): p50={E_err['p50']:.2e}  max={E_err['max']:.2e}  consistency max={con.get('max', 0):.2e}")
 
                 perf = r.get("performance", {})
