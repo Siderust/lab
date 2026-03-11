@@ -19,7 +19,7 @@ export default function Sidebar() {
         <FlaskConical className="h-6 w-6 text-orange-400" />
         <div>
           <span className="font-bold text-lg tracking-tight text-white block leading-tight">
-            Astro-Tools Lab
+            Siderust Lab
           </span>
           <span className="text-[10px] text-gray-500 uppercase tracking-widest">
             Benchmark Platform

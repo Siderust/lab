@@ -33,7 +33,7 @@ runner._results_loader = loader  # allow runner to reload results cache on compl
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Astro-Tools Benchmark Laboratory", version="1.0.0")
+app = FastAPI(title="Siderust Benchmark Laboratory", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
