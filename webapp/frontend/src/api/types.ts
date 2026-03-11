@@ -31,6 +31,7 @@ export interface PerformanceData {
   batch_size: number | null;
   rounds: number | null;
   samples: number[] | null;
+  valid: boolean | null;
   warnings: string[] | null;
 }
 
@@ -58,6 +59,8 @@ export interface AlignmentChecklist {
   refraction?: string;
   ephemeris_source?: string;
   models?: Record<string, string>;
+  model_parity_class?: string;
+  candidate_parity?: string;
   mode?: string;
   note?: string;
   [key: string]: unknown;

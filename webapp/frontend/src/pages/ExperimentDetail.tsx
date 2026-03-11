@@ -172,6 +172,7 @@ function OverviewTab({ results }: { results: ExperimentResult[] }) {
         const perf = r.performance as Record<string, unknown>;
         const nsOp = (perf?.per_op_ns as number) ?? null;
         const opsS = (perf?.throughput_ops_s as number) ?? null;
+        const perfValid = (perf?.valid as boolean) ?? true;
 
         const isAccBest = r.candidate_library === bestAccuracy;
         const isPerfBest = r.candidate_library === bestPerf;
@@ -202,6 +203,19 @@ function OverviewTab({ results }: { results: ExperimentResult[] }) {
                   FASTEST
                 </span>
               )}
+              {r.alignment?.candidate_parity && r.alignment.candidate_parity !== "reference" && (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  r.alignment.candidate_parity === "model-parity"
+                    ? "bg-emerald-900/40 text-emerald-400"
+                    : r.alignment.candidate_parity === "model-mismatch"
+                    ? "bg-amber-900/40 text-amber-400"
+                    : "bg-blue-900/40 text-blue-400"
+                }`}>
+                  {r.alignment.candidate_parity === "model-parity" ? "MODEL PARITY"
+                    : r.alignment.candidate_parity === "model-mismatch" ? "MODEL MISMATCH"
+                    : r.alignment.candidate_parity.toUpperCase().replace(/-/g, " ")}
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -223,9 +237,9 @@ function OverviewTab({ results }: { results: ExperimentResult[] }) {
                 unit={pm.unit}
               />
               <MetricCard
-                label="Latency"
+                label={nsOp != null && !perfValid ? "Latency ⚠" : "Latency"}
                 value={nsOp != null ? fmtNs(nsOp) : null}
-                accent={isPerfBest ? "yellow" : "default"}
+                accent={nsOp != null && !perfValid ? "red" : isPerfBest ? "yellow" : "default"}
               />
               <MetricCard
                 label="Throughput"

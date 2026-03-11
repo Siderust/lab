@@ -688,6 +688,7 @@ def run_multi_sample_perf(cmd, input_text: str, label: str,
         "batch_size": result.get("count"),
         "rounds": rounds,
         "samples": samples_per_op,
+        "valid": median_ns >= MIN_MEASURABLE_NS and cv <= 20,
         "warnings": warnings,
     }
 
@@ -1157,7 +1158,7 @@ def compute_kepler_accuracy(ref_cases, cand_cases, ref_label, cand_label):
 # Alignment checklist
 # ---------------------------------------------------------------------------
 
-def alignment_checklist(experiment: str, mode: str = "common_denominator"):
+def alignment_checklist(experiment: str, mode: str = "common_denominator", candidate_library: str = ""):
     """Return the alignment checklist for this run."""
     base = {
         "units": {
@@ -1491,6 +1492,130 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator"):
     if "models" in base:
         base["models"].setdefault("anise", "Not available in ANISE adapter for this experiment")
 
+    # ── Per-candidate parity ──────────────────────────────────────────────
+    # Maps (experiment, library) → parity class relative to the reference.
+    # "reference"       = this IS the reference library
+    # "model-parity"    = same underlying model as reference
+    # "model-mismatch"  = different model from reference
+    # "external-reference" = reference is external (JPL Horizons)
+    _CANDIDATE_PARITY: dict[str, dict[str, str]] = {
+        "frame_rotation_bpn": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-mismatch", "libnova": "model-mismatch",
+        },
+        "gmst_era": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "equ_ecl": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "equ_horizontal": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-parity",
+        },
+        "solar_position": {
+            "jpl_horizons": "reference", "erfa": "external-reference",
+            "astropy": "external-reference", "siderust": "external-reference",
+            "libnova": "external-reference", "anise": "external-reference",
+        },
+        "lunar_position": {
+            "jpl_horizons": "reference", "erfa": "external-reference",
+            "astropy": "external-reference", "siderust": "external-reference",
+            "libnova": "external-reference", "anise": "external-reference",
+        },
+        "kepler_solver": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-parity",
+        },
+        "frame_bias": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "precession": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "nutation": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-mismatch", "libnova": "model-mismatch",
+        },
+        "icrs_ecl_j2000": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+            "anise": "model-parity",
+        },
+        "icrs_ecl_tod": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "horiz_to_equ": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-parity",
+        },
+        # Inverse/composed experiments inherit from parent
+        "inv_frame_bias": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "inv_precession": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "inv_nutation": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-mismatch", "libnova": "model-mismatch",
+        },
+        "inv_bpn": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-mismatch", "libnova": "model-mismatch",
+        },
+        "inv_icrs_ecl_j2000": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+            "anise": "model-parity",
+        },
+        "obliquity": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+            "anise": "model-parity",
+        },
+        "inv_obliquity": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+            "anise": "model-parity",
+        },
+        "bias_precession": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "inv_bias_precession": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "precession_nutation": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-mismatch", "libnova": "model-mismatch",
+        },
+        "inv_precession_nutation": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-mismatch", "libnova": "model-mismatch",
+        },
+        "inv_icrs_ecl_tod": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+        "inv_equ_ecl": {
+            "erfa": "reference", "astropy": "model-parity",
+            "siderust": "model-parity", "libnova": "model-mismatch",
+        },
+    }
+
+    if candidate_library:
+        exp_parity = _CANDIDATE_PARITY.get(experiment, {})
+        base["candidate_parity"] = exp_parity.get(candidate_library, base.get("model_parity_class", "unknown"))
+
     return base
 
 
@@ -1587,6 +1712,21 @@ def generate_summary_table(all_results: list) -> str:
             return f"{v:.2e}"
         return f"{v:.{precision}f}"
 
+    def fmt_perf(perf: dict, precision=1) -> str:
+        """Format per-op latency with † annotation if measurement is invalid."""
+        ns = perf.get("per_op_ns")
+        if ns is None:
+            return "—"
+        suffix = "" if perf.get("valid", True) else "†"
+        return f"{ns:.{precision}f}{suffix}"
+
+    def fmt_speedup(perf: dict, ref_perf: dict) -> str:
+        """Format speedup ratio with † if either measurement is invalid."""
+        if not perf.get("per_op_ns") or not ref_perf.get("per_op_ns"):
+            return "—"
+        suffix = "" if perf.get("valid", True) and ref_perf.get("valid", True) else "†"
+        return f"{ref_perf['per_op_ns'] / perf['per_op_ns']:.1f}×{suffix}"
+
     # Separate by experiment type
     bpn_results = [r for r in all_results if r.get("experiment") == "frame_rotation_bpn"]
     gmst_results = [r for r in all_results if r.get("experiment") == "gmst_era"]
@@ -1607,9 +1747,6 @@ def generate_summary_table(all_results: list) -> str:
             mfr = acc.get("matrix_frobenius", {}) or {}
             perf = r.get("performance", {})
             ref_perf = r.get("reference_performance", {})
-            speedup = "—"
-            if perf.get("per_op_ns") and ref_perf.get("per_op_ns"):
-                speedup = f"{ref_perf['per_op_ns'] / perf['per_op_ns']:.1f}×"
 
             lines.append(
                 f"| {lib} "
@@ -1618,8 +1755,8 @@ def generate_summary_table(all_results: list) -> str:
                 f"| {fmt(ang.get('max'))} "
                 f"| {fmt(mfr.get('p50'), 2)} "
                 f"| {fmt(clo.get('p99'), 2)} "
-                f"| {fmt(perf.get('per_op_ns'), 1)} "
-                f"| {speedup} |"
+                f"| {fmt_perf(perf)} "
+                f"| {fmt_speedup(perf, ref_perf)} |"
             )
         lines.append("")
 
@@ -1669,9 +1806,6 @@ def generate_summary_table(all_results: list) -> str:
             clo = acc.get("closure_error_rad", {})
             perf = r.get("performance", {})
             ref_perf = r.get("reference_performance", {})
-            speedup = "—"
-            if perf.get("per_op_ns") and ref_perf.get("per_op_ns"):
-                speedup = f"{ref_perf['per_op_ns'] / perf['per_op_ns']:.1f}×"
 
             lines.append(
                 f"| {lib} "
@@ -1679,8 +1813,8 @@ def generate_summary_table(all_results: list) -> str:
                 f"| {fmt(ang.get('p99'))} "
                 f"| {fmt(ang.get('max'))} "
                 f"| {fmt(clo.get('p99'), 2)} "
-                f"| {fmt(perf.get('per_op_ns'), 1)} "
-                f"| {speedup} |"
+                f"| {fmt_perf(perf)} "
+                f"| {fmt_speedup(perf, ref_perf)} |"
             )
         lines.append("")
 
@@ -1773,6 +1907,10 @@ def generate_summary_table(all_results: list) -> str:
         lines.append(f"| {exp} | " + " | ".join(cells) + " |")
     lines.append("")
 
+    # Footnote for invalid perf measurements
+    lines.append("† Measurement below reliability threshold (<10 ns/op or CV >20%); treat as indicative only.")
+    lines.append("")
+
     return "\n".join(lines) + "\n"
 
 
@@ -1843,7 +1981,7 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
             "candidate_library": lib,
             "reference_library": "erfa",
             "description": EXPERIMENT_DESCRIPTIONS.get(exp_name, {}),
-            "alignment": alignment_checklist(exp_name),
+            "alignment": alignment_checklist(exp_name, candidate_library=lib),
             "inputs": {
                 "count": n, "seed": seed,
                 "epoch_range": [f"JD {min(epochs):.1f}", f"JD {max(epochs):.1f}"],
@@ -1854,7 +1992,6 @@ def run_experiment_frame_rotation_bpn(n: int, seed: int, run_perf: bool = True,
             "reference_performance": {},
             "benchmark_config": {
                 "perf_rounds": perf_rounds if run_perf else 0,
-                "perf_warmup": DEFAULT_PERF_WARMUP,
                 "perf_enabled": run_perf,
             },
             "run_metadata": meta,
@@ -1976,7 +2113,7 @@ def _run_external_reference_experiment(exp_name: str, n: int, seed: int,
 
         accuracy = accuracy_fn(ref_cases, cand_data["cases"], "jpl_horizons", lib, **accuracy_kwargs)
 
-        alignment = alignment_checklist(exp_name)
+        alignment = alignment_checklist(exp_name, candidate_library=lib)
         alignment["horizons_source"] = source_tag
         alignment["horizons_cache_key"] = cache_key
         alignment["horizons_from_cache"] = from_cache
@@ -2099,7 +2236,7 @@ def _run_generic_experiment(exp_name: str, n: int, seed: int, run_perf: bool = T
             "candidate_library": lib,
             "reference_library": "erfa",
             "description": EXPERIMENT_DESCRIPTIONS.get(exp_name, {}),
-            "alignment": alignment_checklist(exp_name),
+            "alignment": alignment_checklist(exp_name, candidate_library=lib),
             "inputs": {
                 "count": n, "seed": seed,
                 "dataset_fingerprint": ds_fingerprint,
@@ -2575,7 +2712,11 @@ def main():
         print(f"{'='*70}")
         print(summary)
 
-        # Write run manifest
+        # Write run manifest with completeness tracking
+        completed_experiments = sorted(set(r["experiment"] for r in all_results))
+        completed_libraries = sorted(set(r["candidate_library"] for r in all_results))
+        missing_experiments = sorted(set(experiments_to_run) - set(completed_experiments))
+
         manifest = {
             "run_id": run_timestamp,
             "config": {
@@ -2587,7 +2728,14 @@ def main():
                 "ci_mode": args.ci,
             },
             "metadata": run_metadata(),
-            "experiment_count": len(set(r["experiment"] for r in all_results)),
+            "completeness": {
+                "requested": len(experiments_to_run),
+                "completed": len(completed_experiments),
+                "missing": missing_experiments,
+                "completed_experiments": completed_experiments,
+                "libraries": completed_libraries,
+            },
+            "experiment_count": len(completed_experiments),
             "total_results": len(all_results),
         }
         manifest_path = RESULTS_DIR / run_timestamp / "manifest.json"

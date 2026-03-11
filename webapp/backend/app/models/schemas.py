@@ -95,6 +95,7 @@ class PerformanceData(BaseModel):
     batch_size: int | None = None
     rounds: int | None = None
     samples: list[float] | None = None
+    valid: bool | None = None
     warnings: list[str] | None = None
 
 
@@ -138,6 +139,8 @@ class AlignmentChecklist(BaseModel, extra="allow"):
     refraction: str | None = None
     ephemeris_source: str | None = None
     models: dict[str, str] | None = None
+    model_parity_class: str | None = None
+    candidate_parity: str | None = None
     mode: str | None = None
     note: str | None = None
 
