@@ -571,9 +571,8 @@ fn run_gmst_era_perf(lines: &mut impl Iterator<Item = String>) {
 fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
     let n: usize = lines.next().unwrap().trim().parse().unwrap();
 
-    let mut jds: Vec<f64> = Vec::with_capacity(n);
-    let mut ras: Vec<f64> = Vec::with_capacity(n);
-    let mut decs: Vec<f64> = Vec::with_capacity(n);
+    let mut jds: Vec<JulianDate> = Vec::with_capacity(n);
+    let mut icrs_dirs: Vec<cartesian::Direction<ICRS>> = Vec::with_capacity(n);
 
     for _ in 0..n {
         let line = lines.next().unwrap();
@@ -582,20 +581,19 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
             .split_whitespace()
             .map(|s| s.parse().unwrap())
             .collect();
-        jds.push(parts[0]);
-        ras.push(parts[1]);
-        decs.push(parts[2]);
+        let jd = JulianDate::new(parts[0]);
+        let spherical_icrs = affn::spherical::Direction::<ICRS>::new_raw(
+            Degrees::new(parts[2].to_degrees()),
+            Degrees::new(parts[1].to_degrees()),
+        );
+
+        jds.push(jd);
+        icrs_dirs.push(spherical_icrs.to_cartesian());
     }
 
     // Warm-up
     for i in 0..n.min(100) {
-        let jd = JulianDate::new(jds[i]);
-        let spherical_icrs = affn::spherical::Direction::<ICRS>::new_raw(
-            Degrees::new(decs[i].to_degrees()),
-            Degrees::new(ras[i].to_degrees()),
-        );
-        let icrs_direction = spherical_icrs.to_cartesian();
-        let res = icrs_direction.to_ecliptic_of_date(&jd);
+        let res = icrs_dirs[i].to_ecliptic_of_date(&jds[i]);
         std::hint::black_box(&res);
     }
 
@@ -603,16 +601,8 @@ fn run_equ_ecl_perf(lines: &mut impl Iterator<Item = String>) {
     let start = Instant::now();
     let mut sink: f64 = 0.0;
     for i in 0..n {
-        let jd = JulianDate::new(jds[i]);
-        let spherical_icrs = affn::spherical::Direction::<ICRS>::new_raw(
-            Degrees::new(decs[i].to_degrees()),
-            Degrees::new(ras[i].to_degrees()),
-        );
-        let icrs_direction = spherical_icrs.to_cartesian();
-        let ecliptic_direction = icrs_direction.to_ecliptic_of_date(&jd);
-        let ecliptic_spherical = ecliptic_direction.to_spherical();
-        let lon = Radians::from(ecliptic_spherical.azimuth);
-        sink += lon.value();
+        let ecliptic_direction = icrs_dirs[i].to_ecliptic_of_date(&jds[i]);
+        sink += ecliptic_direction.x();
     }
     let elapsed = start.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
