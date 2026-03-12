@@ -3,11 +3,12 @@
 //! Reads experiment input from stdin and writes one JSON object to stdout.
 //! Unsupported experiments return `{ "skipped": true }` responses.
 
+use anise::constants::celestial_objects::{JUPITER, MARS, MERCURY, NEPTUNE, SATURN, URANUS, VENUS};
 use anise::constants::frames::{EARTH_J2000, MOON_J2000, SUN_J2000};
 use anise::constants::orientations::{ECLIPJ2000, J2000, J2000_TO_ECLIPJ2000_ANGLE_RAD};
 use anise::math::Vector3;
 use anise::math::rotation::DCM;
-use anise::prelude::{Aberration, Almanac, Epoch, TimeScale};
+use anise::prelude::{Aberration, Almanac, Epoch, Frame, TimeScale};
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;
@@ -71,6 +72,10 @@ fn load_ephemeris_almanac() -> Result<Almanac, String> {
     }
 
     Err("ANISE SPK not found. Expected one of: siderust/scripts/jpl/de440/dataset/de440.bsp, anise/data/de440s.bsp, anise/data/de440.bsp".to_string())
+}
+
+fn sanitized_reason(reason: &str) -> String {
+    reason.replace('"', "'")
 }
 
 fn run_solar_position(lines: &mut impl Iterator<Item = String>) {
@@ -202,6 +207,100 @@ fn run_lunar_position(lines: &mut impl Iterator<Item = String>) {
             out,
             "{{\"jd_tt\":{:.15},\"ra_rad\":{:.17e},\"dec_rad\":{:.17e},\"dist_km\":{:.17e}}}",
             jd_tt, ra, dec, dist_km
+        )
+        .unwrap();
+    }
+
+    writeln!(out, "\n]}}")
+        .unwrap();
+}
+
+fn run_planet_position(
+    lines: &mut impl Iterator<Item = String>,
+    experiment: &str,
+    planet_name: &str,
+    target_frame: Frame,
+) {
+    let n = read_n(lines);
+    let almanac = match load_ephemeris_almanac() {
+        Ok(a) => a,
+        Err(reason) => {
+            for _ in 0..n {
+                let _ = lines.next();
+            }
+            println!(
+                "{{\"experiment\":\"{}\",\"library\":\"anise\",\"skipped\":true,\"reason\":\"{}\"}}",
+                experiment,
+                reason
+            );
+            return;
+        }
+    };
+
+    let mut jds = Vec::with_capacity(n);
+    for _ in 0..n {
+        jds.push(lines.next().unwrap().trim().parse::<f64>().unwrap());
+    }
+
+    if let Some(first_jd) = jds.first() {
+        let epoch = epoch_from_jd_tt(*first_jd);
+        if let Err(err) = almanac.translate(target_frame, EARTH_J2000, epoch, Aberration::NONE) {
+            println!(
+                "{{\"experiment\":\"{}\",\"library\":\"anise\",\"skipped\":true,\"reason\":\"{}\"}}",
+                experiment,
+                sanitized_reason(&format!(
+                    "ANISE direct {} frame is unavailable in the loaded SPK: {}",
+                    planet_name, err
+                ))
+            );
+            return;
+        }
+    }
+
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+
+    write!(
+        out,
+        "{{\"experiment\":\"{}\",\"library\":\"anise\",\"model\":\"SPK_geometric_translation({}->EARTH_J2000)\",\"count\":{},\"cases\":[\n",
+        experiment, planet_name, n
+    )
+    .unwrap();
+
+    for (i, jd_tt) in jds.iter().enumerate() {
+        let epoch = epoch_from_jd_tt(*jd_tt);
+
+        let state = match almanac.translate(target_frame, EARTH_J2000, epoch, Aberration::NONE) {
+            Ok(s) => s,
+            Err(_) => {
+                if i > 0 {
+                    write!(out, ",\n").unwrap();
+                }
+                write!(
+                    out,
+                    "{{\"jd_tt\":{:.15},\"ra_rad\":null,\"dec_rad\":null,\"dist_au\":null}}",
+                    jd_tt
+                )
+                .unwrap();
+                continue;
+            }
+        };
+
+        let x = state.radius_km[0];
+        let y = state.radius_km[1];
+        let z = state.radius_km[2];
+        let dist_km = state.radius_km.norm();
+        let ra = y.atan2(x).rem_euclid(2.0 * std::f64::consts::PI);
+        let dec = (z / dist_km).asin();
+        let dist_au = dist_km / KM_PER_AU;
+
+        if i > 0 {
+            write!(out, ",\n").unwrap();
+        }
+        write!(
+            out,
+            "{{\"jd_tt\":{:.15},\"ra_rad\":{:.17e},\"dec_rad\":{:.17e},\"dist_au\":{:.17e}}}",
+            jd_tt, ra, dec, dist_au
         )
         .unwrap();
     }
@@ -450,6 +549,89 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
     );
 }
 
+fn run_planet_position_perf(
+    lines: &mut impl Iterator<Item = String>,
+    experiment: &str,
+    planet_name: &str,
+    target_frame: Frame,
+) {
+    let n = read_n(lines);
+    let almanac = match load_ephemeris_almanac() {
+        Ok(a) => a,
+        Err(reason) => {
+            for _ in 0..n {
+                let _ = lines.next();
+            }
+            println!(
+                "{{\"experiment\":\"{}_perf\",\"library\":\"anise\",\"skipped\":true,\"reason\":\"{}\"}}",
+                experiment,
+                reason
+            );
+            return;
+        }
+    };
+
+    let mut jds = Vec::with_capacity(n);
+    for _ in 0..n {
+        jds.push(lines.next().unwrap().trim().parse::<f64>().unwrap());
+    }
+
+    if let Some(first_jd) = jds.first() {
+        let epoch = epoch_from_jd_tt(*first_jd);
+        if let Err(err) = almanac.translate(target_frame, EARTH_J2000, epoch, Aberration::NONE) {
+            println!(
+                "{{\"experiment\":\"{}_perf\",\"library\":\"anise\",\"skipped\":true,\"reason\":\"{}\"}}",
+                experiment,
+                sanitized_reason(&format!(
+                    "ANISE direct {} frame is unavailable in the loaded SPK: {}",
+                    planet_name, err
+                ))
+            );
+            return;
+        }
+    }
+
+    for jd in jds.iter().take(n.min(100)) {
+        let epoch = epoch_from_jd_tt(*jd);
+        if let Ok(state) = almanac.translate(target_frame, EARTH_J2000, epoch, Aberration::NONE) {
+            let x = state.radius_km[0];
+            let y = state.radius_km[1];
+            let z = state.radius_km[2];
+            let dist_km = state.radius_km.norm();
+            let ra = y.atan2(x).rem_euclid(2.0 * std::f64::consts::PI);
+            let dec = (z / dist_km).asin();
+            std::hint::black_box((ra, dec, dist_km));
+        }
+    }
+
+    let start = Instant::now();
+    let mut sink = 0.0_f64;
+    for jd in &jds {
+        let epoch = epoch_from_jd_tt(*jd);
+        if let Ok(state) = almanac.translate(target_frame, EARTH_J2000, epoch, Aberration::NONE) {
+            let x = state.radius_km[0];
+            let y = state.radius_km[1];
+            let z = state.radius_km[2];
+            let dist_km = state.radius_km.norm();
+            let ra = y.atan2(x).rem_euclid(2.0 * std::f64::consts::PI);
+            let dec = (z / dist_km).asin();
+            sink += ra + dec + dist_km / KM_PER_AU;
+        }
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+
+    println!(
+        "{{\"experiment\":\"{}_perf\",\"library\":\"anise\",\"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        experiment,
+        n,
+        total_ns,
+        total_ns / n as f64,
+        n as f64 / (total_ns * 1e-9),
+        sink
+    );
+}
+
 fn main() {
     let stdin = io::stdin();
     let mut lines = stdin.lock().lines().map(|l| l.unwrap());
@@ -463,6 +645,75 @@ fn main() {
         "solar_position_perf" => run_solar_position_perf(&mut lines),
         "lunar_position" => run_lunar_position(&mut lines),
         "lunar_position_perf" => run_lunar_position_perf(&mut lines),
+        "mercury_position" => {
+            run_planet_position(&mut lines, "mercury_position", "Mercury", Frame::new(MERCURY, J2000))
+        }
+        "mercury_position_perf" => run_planet_position_perf(
+            &mut lines,
+            "mercury_position",
+            "Mercury",
+            Frame::new(MERCURY, J2000),
+        ),
+        "venus_position" => {
+            run_planet_position(&mut lines, "venus_position", "Venus", Frame::new(VENUS, J2000))
+        }
+        "venus_position_perf" => run_planet_position_perf(
+            &mut lines,
+            "venus_position",
+            "Venus",
+            Frame::new(VENUS, J2000),
+        ),
+        "mars_position" => {
+            run_planet_position(&mut lines, "mars_position", "Mars", Frame::new(MARS, J2000))
+        }
+        "mars_position_perf" => run_planet_position_perf(
+            &mut lines,
+            "mars_position",
+            "Mars",
+            Frame::new(MARS, J2000),
+        ),
+        "jupiter_position" => run_planet_position(
+            &mut lines,
+            "jupiter_position",
+            "Jupiter",
+            Frame::new(JUPITER, J2000),
+        ),
+        "jupiter_position_perf" => run_planet_position_perf(
+            &mut lines,
+            "jupiter_position",
+            "Jupiter",
+            Frame::new(JUPITER, J2000),
+        ),
+        "saturn_position" => {
+            run_planet_position(&mut lines, "saturn_position", "Saturn", Frame::new(SATURN, J2000))
+        }
+        "saturn_position_perf" => run_planet_position_perf(
+            &mut lines,
+            "saturn_position",
+            "Saturn",
+            Frame::new(SATURN, J2000),
+        ),
+        "uranus_position" => {
+            run_planet_position(&mut lines, "uranus_position", "Uranus", Frame::new(URANUS, J2000))
+        }
+        "uranus_position_perf" => run_planet_position_perf(
+            &mut lines,
+            "uranus_position",
+            "Uranus",
+            Frame::new(URANUS, J2000),
+        ),
+        "neptune_position" => run_planet_position(
+            &mut lines,
+            "neptune_position",
+            "Neptune",
+            Frame::new(NEPTUNE, J2000),
+        ),
+        "neptune_position_perf" => run_planet_position_perf(
+            &mut lines,
+            "neptune_position",
+            "Neptune",
+            Frame::new(NEPTUNE, J2000),
+        ),
 
         // Supported J2000 ecliptic rotations
         "icrs_ecl_j2000" => run_direction_rotation(

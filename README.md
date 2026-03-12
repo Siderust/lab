@@ -217,6 +217,18 @@ python3 pipeline/orchestrator.py --ci --experiments all
 ```
 This defaults to N=100 and 2 perf rounds — fast but still meaningful.
 
+### Competitive roadmap
+
+To turn the latest published results into a concrete Siderust improvement plan, run:
+
+```bash
+python3 pipeline/competitive_roadmap.py
+```
+
+The report flags missing experiment coverage, performance losses, and accuracy losses.
+Planet, Sun, and Moon experiments are expected to use JPL Horizons as the reference;
+transform and time experiments are expected to use IAU/SOFA-aligned references.
+
 ### Running sanity tests
 
 ```bash

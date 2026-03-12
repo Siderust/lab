@@ -10,18 +10,21 @@
 //!   equ_horizontal          — Equatorial → Horizontal (AltAz)
 //!   solar_position          — Sun geocentric RA/Dec
 //!   lunar_position          — Moon geocentric RA/Dec
+//!   mercury_position…neptune_position — Planet geocentric RA/Dec
 //!   kepler_solver           — Kepler equation solver
 //!   frame_rotation_bpn_perf — BPN performance timing
 
+use siderust::bodies::solar_system::{Jupiter, Mars, Mercury, Neptune, Saturn, Uranus, Venus};
 use siderust::calculus::kepler_equations::solve_keplers_equation;
 use siderust::calculus::lunar::meeus_ch47;
+use siderust::calculus::vsop87::VSOP87;
 use siderust::coordinates::cartesian;
 use siderust::coordinates::centers::{Geocentric, Geodetic, Heliocentric};
 use siderust::coordinates::frames::{EquatorialTrueOfDate, ECEF, ICRS};
 use siderust::coordinates::transform::ecliptic_of_date::FromEclipticTrueOfDate;
 use siderust::coordinates::transform::horizontal::FromHorizontal;
 use siderust::coordinates::transform::providers::frame_rotation;
-use siderust::coordinates::transform::{AstroContext, DirectionAstroExt, Transform};
+use siderust::coordinates::transform::{AstroContext, DirectionAstroExt, Transform, TransformCenter};
 use siderust::time::JulianDate;
 
 use qtty::{AstronomicalUnit, Degrees, Meters, Radians};
@@ -35,6 +38,29 @@ use direction_experiments::*;
 fn ang_sep(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     dot.clamp(-1.0, 1.0).acos()
+}
+
+type HelioEclipticPos =
+    siderust::coordinates::cartesian::position::EclipticMeanJ2000<AstronomicalUnit, Heliocentric>;
+
+fn planet_ra_dec_dist(planet_vsop87a: fn(JulianDate) -> HelioEclipticPos, jd: JulianDate) -> (f64, f64, f64) {
+    let helio = planet_vsop87a(jd);
+    let geo_ecl: siderust::coordinates::cartesian::position::EclipticMeanJ2000<
+        AstronomicalUnit,
+        Geocentric,
+    > = helio.to_center(jd);
+    let geo_icrs: siderust::coordinates::cartesian::Position<
+        Geocentric,
+        ICRS,
+        AstronomicalUnit,
+    > = geo_ecl.transform(jd);
+    let sph = siderust::coordinates::spherical::Position::from_cartesian(&geo_icrs);
+
+    (
+        sph.azimuth.value().to_radians(),
+        sph.polar.value().to_radians(),
+        sph.distance.value(),
+    )
 }
 
 fn run_frame_rotation_bpn(lines: &mut impl Iterator<Item = String>) {
@@ -409,6 +435,44 @@ fn run_lunar_position(lines: &mut impl Iterator<Item = String>) {
         )
         .unwrap();
     }
+    writeln!(out, "\n]}}").unwrap();
+}
+
+fn run_planet_position(
+    lines: &mut impl Iterator<Item = String>,
+    experiment: &str,
+    model: &str,
+    planet_vsop87a: fn(JulianDate) -> HelioEclipticPos,
+) {
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+
+    write!(
+        out,
+        "{{\"experiment\":\"{}\",\"library\":\"siderust\",\
+         \"model\":\"{}\",\"count\":{},\"cases\":[\n",
+        experiment, model, n
+    )
+    .unwrap();
+
+    for i in 0..n {
+        let line = lines.next().unwrap();
+        let jd_tt: f64 = line.trim().parse().unwrap();
+        let (ra_rad, dec_rad, dist_au) = planet_ra_dec_dist(planet_vsop87a, JulianDate::new(jd_tt));
+
+        if i > 0 {
+            write!(out, ",\n").unwrap();
+        }
+        write!(
+            out,
+            "{{\"jd_tt\":{:.15},\
+             \"ra_rad\":{:.17e},\"dec_rad\":{:.17e},\"dist_au\":{:.17e}}}",
+            jd_tt, ra_rad, dec_rad, dist_au,
+        )
+        .unwrap();
+    }
+
     writeln!(out, "\n]}}").unwrap();
 }
 
@@ -802,6 +866,47 @@ fn run_lunar_position_perf(lines: &mut impl Iterator<Item = String>) {
     );
 }
 
+fn run_planet_position_perf(
+    lines: &mut impl Iterator<Item = String>,
+    experiment: &str,
+    planet_vsop87a: fn(JulianDate) -> HelioEclipticPos,
+) {
+    let n: usize = lines.next().unwrap().trim().parse().unwrap();
+
+    let mut jds: Vec<f64> = Vec::with_capacity(n);
+    for _ in 0..n {
+        let line = lines.next().unwrap();
+        jds.push(line.trim().parse().unwrap());
+    }
+
+    for jd_tt in jds.iter().take(n.min(100)) {
+        let (ra, dec, dist) = planet_ra_dec_dist(planet_vsop87a, JulianDate::new(*jd_tt));
+        std::hint::black_box(ra + dec + dist);
+    }
+
+    let start = Instant::now();
+    let mut sink: f64 = 0.0;
+    for jd_tt in &jds {
+        let (ra, dec, dist) = planet_ra_dec_dist(planet_vsop87a, JulianDate::new(*jd_tt));
+        sink += ra + dec + dist;
+    }
+    let elapsed = start.elapsed();
+    let total_ns = elapsed.as_nanos() as f64;
+    let per_op_ns = total_ns / n as f64;
+
+    println!(
+        "{{\"experiment\":\"{}_perf\",\"library\":\"siderust\",\
+         \"count\":{},\"total_ns\":{:.0},\"per_op_ns\":{:.1},\
+         \"throughput_ops_s\":{:.0},\"_sink\":{:.17e}}}",
+        experiment,
+        n,
+        total_ns,
+        per_op_ns,
+        n as f64 / (total_ns * 1e-9),
+        sink,
+    );
+}
+
 fn run_kepler_solver_perf(lines: &mut impl Iterator<Item = String>) {
     use qtty::RAD;
 
@@ -864,6 +969,48 @@ fn main() {
         "equ_horizontal" => run_equ_horizontal(&mut lines),
         "solar_position" => run_solar_position(&mut lines),
         "lunar_position" => run_lunar_position(&mut lines),
+        "mercury_position" => run_planet_position(
+            &mut lines,
+            "mercury_position",
+            "siderust_VSOP87A_geometric_mercury",
+            |jd| Mercury.vsop87a(jd),
+        ),
+        "venus_position" => run_planet_position(
+            &mut lines,
+            "venus_position",
+            "siderust_VSOP87A_geometric_venus",
+            |jd| Venus.vsop87a(jd),
+        ),
+        "mars_position" => run_planet_position(
+            &mut lines,
+            "mars_position",
+            "siderust_VSOP87A_geometric_mars",
+            |jd| Mars.vsop87a(jd),
+        ),
+        "jupiter_position" => run_planet_position(
+            &mut lines,
+            "jupiter_position",
+            "siderust_VSOP87A_geometric_jupiter",
+            |jd| Jupiter.vsop87a(jd),
+        ),
+        "saturn_position" => run_planet_position(
+            &mut lines,
+            "saturn_position",
+            "siderust_VSOP87A_geometric_saturn",
+            |jd| Saturn.vsop87a(jd),
+        ),
+        "uranus_position" => run_planet_position(
+            &mut lines,
+            "uranus_position",
+            "siderust_VSOP87A_geometric_uranus",
+            |jd| Uranus.vsop87a(jd),
+        ),
+        "neptune_position" => run_planet_position(
+            &mut lines,
+            "neptune_position",
+            "siderust_VSOP87A_geometric_neptune",
+            |jd| Neptune.vsop87a(jd),
+        ),
         "kepler_solver" => run_kepler_solver(&mut lines),
         "frame_rotation_bpn_perf" => run_frame_rotation_bpn_perf(&mut lines),
         "gmst_era_perf" => run_gmst_era_perf(&mut lines),
@@ -871,6 +1018,27 @@ fn main() {
         "equ_horizontal_perf" => run_equ_horizontal_perf(&mut lines),
         "solar_position_perf" => run_solar_position_perf(&mut lines),
         "lunar_position_perf" => run_lunar_position_perf(&mut lines),
+        "mercury_position_perf" => {
+            run_planet_position_perf(&mut lines, "mercury_position", |jd| Mercury.vsop87a(jd))
+        }
+        "venus_position_perf" => {
+            run_planet_position_perf(&mut lines, "venus_position", |jd| Venus.vsop87a(jd))
+        }
+        "mars_position_perf" => {
+            run_planet_position_perf(&mut lines, "mars_position", |jd| Mars.vsop87a(jd))
+        }
+        "jupiter_position_perf" => {
+            run_planet_position_perf(&mut lines, "jupiter_position", |jd| Jupiter.vsop87a(jd))
+        }
+        "saturn_position_perf" => {
+            run_planet_position_perf(&mut lines, "saturn_position", |jd| Saturn.vsop87a(jd))
+        }
+        "uranus_position_perf" => {
+            run_planet_position_perf(&mut lines, "uranus_position", |jd| Uranus.vsop87a(jd))
+        }
+        "neptune_position_perf" => {
+            run_planet_position_perf(&mut lines, "neptune_position", |jd| Neptune.vsop87a(jd))
+        }
         "kepler_solver_perf" => run_kepler_solver_perf(&mut lines),
         "frame_bias" => run_frame_bias(&mut lines),
         "frame_bias_perf" => run_frame_bias_perf(&mut lines),

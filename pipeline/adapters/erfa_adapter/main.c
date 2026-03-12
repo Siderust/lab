@@ -64,6 +64,22 @@ static double normalize_angle(double a) {
     return a;
 }
 
+static int planet_geocentric_ra_dec_dist(double jd_tt, int np,
+                                         double *ra, double *dec, double *dist_au) {
+    double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
+    double earth_pvh[2][3], earth_pvb[2][3], planet_pv[2][3];
+    eraEpv00(date1, date2, earth_pvh, earth_pvb);
+    int status = eraPlan94(date1, date2, np, planet_pv);
+
+    double gx = planet_pv[0][0] - earth_pvh[0][0];
+    double gy = planet_pv[0][1] - earth_pvh[0][1];
+    double gz = planet_pv[0][2] - earth_pvh[0][2];
+    *dist_au = sqrt(gx*gx + gy*gy + gz*gz);
+    *ra = normalize_angle(atan2(gy, gx));
+    *dec = asin(gz / *dist_au);
+    return status;
+}
+
 /* ------------------------------------------------------------------ */
 /* Experiment: frame_rotation_bpn                                      */
 /* Computes the Bias-Precession-Nutation matrix using IAU 2006/2000A   */
@@ -365,6 +381,29 @@ static void run_lunar_position(void) {
         if (i > 0) printf(",\n");
         printf("{\"jd_tt\":%.15f,", jd_tt);
         printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,\"dist_km\":%.17e}", ra, dec, dist_km);
+    }
+    printf("\n]}\n");
+}
+
+static void run_planet_position(const char *experiment, const char *planet_name, int np) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"%s\",\"library\":\"erfa\",", experiment);
+    printf("\"model\":\"ERFA_plan94_%s_analytic\",", planet_name);
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt, ra, dec, dist_au;
+        if (scanf("%lf", &jd_tt) != 1) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        planet_geocentric_ra_dec_dist(jd_tt, np, &ra, &dec, &dist_au);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,", jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,\"dist_au\":%.17e}", ra, dec, dist_au);
     }
     printf("\n]}\n");
 }
@@ -787,6 +826,48 @@ static void run_lunar_position_perf(void) {
     double per_op_ns = elapsed_ns / n;
 
     printf("{\"experiment\":\"lunar_position_perf\",\"library\":\"erfa\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_planet_position_perf(const char *experiment, int np) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    for (int i = 0; i < n && i < 100; i++) {
+        double ra, dec, dist_au;
+        planet_geocentric_ra_dec_dist(jds[i], np, &ra, &dec, &dist_au);
+        (void)ra;
+        (void)dec;
+        (void)dist_au;
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        double ra, dec, dist_au;
+        planet_geocentric_ra_dec_dist(jds[i], np, &ra, &dec, &dist_au);
+        sink += ra + dec + dist_au;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"%s_perf\",\"library\":\"erfa\",", experiment);
     printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
     printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
            (double)n / (elapsed_ns * 1e-9), sink);
@@ -1634,6 +1715,20 @@ int main(void) {
         run_solar_position();
     } else if (strcmp(experiment, "lunar_position") == 0) {
         run_lunar_position();
+    } else if (strcmp(experiment, "mercury_position") == 0) {
+        run_planet_position("mercury_position", "Mercury", 1);
+    } else if (strcmp(experiment, "venus_position") == 0) {
+        run_planet_position("venus_position", "Venus", 2);
+    } else if (strcmp(experiment, "mars_position") == 0) {
+        run_planet_position("mars_position", "Mars", 4);
+    } else if (strcmp(experiment, "jupiter_position") == 0) {
+        run_planet_position("jupiter_position", "Jupiter", 5);
+    } else if (strcmp(experiment, "saturn_position") == 0) {
+        run_planet_position("saturn_position", "Saturn", 6);
+    } else if (strcmp(experiment, "uranus_position") == 0) {
+        run_planet_position("uranus_position", "Uranus", 7);
+    } else if (strcmp(experiment, "neptune_position") == 0) {
+        run_planet_position("neptune_position", "Neptune", 8);
     } else if (strcmp(experiment, "kepler_solver") == 0) {
         run_kepler_solver();
     } else if (strcmp(experiment, "frame_rotation_bpn_perf") == 0) {
@@ -1648,6 +1743,20 @@ int main(void) {
         run_solar_position_perf();
     } else if (strcmp(experiment, "lunar_position_perf") == 0) {
         run_lunar_position_perf();
+    } else if (strcmp(experiment, "mercury_position_perf") == 0) {
+        run_planet_position_perf("mercury_position", 1);
+    } else if (strcmp(experiment, "venus_position_perf") == 0) {
+        run_planet_position_perf("venus_position", 2);
+    } else if (strcmp(experiment, "mars_position_perf") == 0) {
+        run_planet_position_perf("mars_position", 4);
+    } else if (strcmp(experiment, "jupiter_position_perf") == 0) {
+        run_planet_position_perf("jupiter_position", 5);
+    } else if (strcmp(experiment, "saturn_position_perf") == 0) {
+        run_planet_position_perf("saturn_position", 6);
+    } else if (strcmp(experiment, "uranus_position_perf") == 0) {
+        run_planet_position_perf("uranus_position", 7);
+    } else if (strcmp(experiment, "neptune_position_perf") == 0) {
+        run_planet_position_perf("neptune_position", 8);
     } else if (strcmp(experiment, "kepler_solver_perf") == 0) {
         run_kepler_solver_perf();
     } else if (strcmp(experiment, "frame_bias") == 0) {

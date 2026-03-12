@@ -10,6 +10,7 @@
  *   equ_horizontal      — Equatorial → Horizontal (AltAz)
  *   solar_position      — Sun geocentric RA/Dec (VSOP87)
  *   lunar_position      — Moon geocentric RA/Dec (ELP 2000-82B)
+ *   mercury_position…neptune_position — Planet geocentric RA/Dec (VSOP87)
  *   kepler_solver       — Kepler equation (Sinnott bisection)
  *   frame_rotation_bpn_perf — BPN performance timing
  */
@@ -28,6 +29,13 @@
 #include <libnova/transform.h>
 #include <libnova/solar.h>
 #include <libnova/lunar.h>
+#include <libnova/mercury.h>
+#include <libnova/venus.h>
+#include <libnova/mars.h>
+#include <libnova/jupiter.h>
+#include <libnova/saturn.h>
+#include <libnova/uranus.h>
+#include <libnova/neptune.h>
 #include <libnova/elliptic_motion.h>
 
 #ifndef M_PI
@@ -397,6 +405,40 @@ static void run_lunar_position(void) {
     printf("\n]}\n");
 }
 
+typedef void (*planet_equ_fn_t)(double, struct ln_equ_posn *);
+typedef double (*planet_dist_fn_t)(double);
+
+static void run_planet_position(const char *experiment,
+                                const char *model,
+                                planet_equ_fn_t equ_fn,
+                                planet_dist_fn_t dist_fn) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    printf("{\"experiment\":\"%s\",\"library\":\"libnova\",", experiment);
+    printf("\"model\":\"%s\",", model);
+    printf("\"count\":%d,\"cases\":[\n", n);
+
+    for (int i = 0; i < n; i++) {
+        double jd_tt;
+        if (scanf("%lf", &jd_tt) != 1) {
+            fprintf(stderr, "bad input line %d\n", i); exit(1);
+        }
+
+        struct ln_equ_posn posn;
+        equ_fn(jd_tt, &posn);
+
+        double ra_rad = posn.ra * (M_PI / 180.0);
+        double dec_rad = posn.dec * (M_PI / 180.0);
+        double dist_au = dist_fn(jd_tt);
+
+        if (i > 0) printf(",\n");
+        printf("{\"jd_tt\":%.15f,", jd_tt);
+        printf("\"ra_rad\":%.17e,\"dec_rad\":%.17e,\"dist_au\":%.17e}", ra_rad, dec_rad, dist_au);
+    }
+    printf("\n]}\n");
+}
+
 /* ------------------------------------------------------------------ */
 /* Experiment: kepler_solver                                           */
 /* Kepler equation via libnova's Sinnott bisection method              */
@@ -744,6 +786,50 @@ static void run_lunar_position_perf(void) {
     double per_op_ns = elapsed_ns / n;
 
     printf("{\"experiment\":\"lunar_position_perf\",\"library\":\"libnova\",");
+    printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
+    printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
+           (double)n / (elapsed_ns * 1e-9), sink);
+
+    free(jds);
+}
+
+static void run_planet_position_perf(const char *experiment,
+                                     planet_equ_fn_t equ_fn,
+                                     planet_dist_fn_t dist_fn) {
+    int n;
+    if (scanf("%d", &n) != 1) { fprintf(stderr, "bad N\n"); exit(1); }
+
+    double *jds = malloc(n * sizeof(double));
+    for (int i = 0; i < n; i++) {
+        if (scanf("%lf", &jds[i]) != 1) {
+            fprintf(stderr, "bad input line %d\n", i);
+            exit(1);
+        }
+    }
+
+    for (int i = 0; i < n && i < 100; i++) {
+        struct ln_equ_posn equ;
+        equ_fn(jds[i], &equ);
+        double dist_au = dist_fn(jds[i]);
+        (void)dist_au;
+    }
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    double sink = 0.0;
+    for (int i = 0; i < n; i++) {
+        struct ln_equ_posn equ;
+        equ_fn(jds[i], &equ);
+        double dist_au = dist_fn(jds[i]);
+        sink += equ.ra + equ.dec + dist_au;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_ns = (t1.tv_sec - t0.tv_sec) * 1e9 + (t1.tv_nsec - t0.tv_nsec);
+    double per_op_ns = elapsed_ns / n;
+
+    printf("{\"experiment\":\"%s_perf\",\"library\":\"libnova\",", experiment);
     printf("\"count\":%d,\"total_ns\":%.0f,\"per_op_ns\":%.1f,", n, elapsed_ns, per_op_ns);
     printf("\"throughput_ops_s\":%.0f,\"_sink\":%.17e}\n",
            (double)n / (elapsed_ns * 1e-9), sink);
@@ -1919,6 +2005,27 @@ int main(void) {
         run_solar_position();
     } else if (strcmp(experiment, "lunar_position") == 0) {
         run_lunar_position();
+    } else if (strcmp(experiment, "mercury_position") == 0) {
+        run_planet_position("mercury_position", "libnova_VSOP87_mercury",
+                            ln_get_mercury_equ_coords, ln_get_mercury_earth_dist);
+    } else if (strcmp(experiment, "venus_position") == 0) {
+        run_planet_position("venus_position", "libnova_VSOP87_venus",
+                            ln_get_venus_equ_coords, ln_get_venus_earth_dist);
+    } else if (strcmp(experiment, "mars_position") == 0) {
+        run_planet_position("mars_position", "libnova_VSOP87_mars",
+                            ln_get_mars_equ_coords, ln_get_mars_earth_dist);
+    } else if (strcmp(experiment, "jupiter_position") == 0) {
+        run_planet_position("jupiter_position", "libnova_VSOP87_jupiter",
+                            ln_get_jupiter_equ_coords, ln_get_jupiter_earth_dist);
+    } else if (strcmp(experiment, "saturn_position") == 0) {
+        run_planet_position("saturn_position", "libnova_VSOP87_saturn",
+                            ln_get_saturn_equ_coords, ln_get_saturn_earth_dist);
+    } else if (strcmp(experiment, "uranus_position") == 0) {
+        run_planet_position("uranus_position", "libnova_VSOP87_uranus",
+                            ln_get_uranus_equ_coords, ln_get_uranus_earth_dist);
+    } else if (strcmp(experiment, "neptune_position") == 0) {
+        run_planet_position("neptune_position", "libnova_VSOP87_neptune",
+                            ln_get_neptune_equ_coords, ln_get_neptune_earth_dist);
     } else if (strcmp(experiment, "kepler_solver") == 0) {
         run_kepler_solver();
     } else if (strcmp(experiment, "frame_rotation_bpn_perf") == 0) {
@@ -1933,6 +2040,27 @@ int main(void) {
         run_solar_position_perf();
     } else if (strcmp(experiment, "lunar_position_perf") == 0) {
         run_lunar_position_perf();
+    } else if (strcmp(experiment, "mercury_position_perf") == 0) {
+        run_planet_position_perf("mercury_position",
+                                 ln_get_mercury_equ_coords, ln_get_mercury_earth_dist);
+    } else if (strcmp(experiment, "venus_position_perf") == 0) {
+        run_planet_position_perf("venus_position",
+                                 ln_get_venus_equ_coords, ln_get_venus_earth_dist);
+    } else if (strcmp(experiment, "mars_position_perf") == 0) {
+        run_planet_position_perf("mars_position",
+                                 ln_get_mars_equ_coords, ln_get_mars_earth_dist);
+    } else if (strcmp(experiment, "jupiter_position_perf") == 0) {
+        run_planet_position_perf("jupiter_position",
+                                 ln_get_jupiter_equ_coords, ln_get_jupiter_earth_dist);
+    } else if (strcmp(experiment, "saturn_position_perf") == 0) {
+        run_planet_position_perf("saturn_position",
+                                 ln_get_saturn_equ_coords, ln_get_saturn_earth_dist);
+    } else if (strcmp(experiment, "uranus_position_perf") == 0) {
+        run_planet_position_perf("uranus_position",
+                                 ln_get_uranus_equ_coords, ln_get_uranus_earth_dist);
+    } else if (strcmp(experiment, "neptune_position_perf") == 0) {
+        run_planet_position_perf("neptune_position",
+                                 ln_get_neptune_equ_coords, ln_get_neptune_earth_dist);
     } else if (strcmp(experiment, "kepler_solver_perf") == 0) {
         run_kepler_solver_perf();
     } else if (strcmp(experiment, "frame_bias") == 0) {

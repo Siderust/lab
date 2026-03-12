@@ -32,7 +32,16 @@ BATCH_SIZE = 200
 HORIZONS_BODIES = {
     "solar_position": "10",   # Sun
     "lunar_position": "301",  # Moon
+    "mercury_position": "199",
+    "venus_position": "299",
+    "mars_position": "499",
+    "jupiter_position": "599",
+    "saturn_position": "699",
+    "uranus_position": "799",
+    "neptune_position": "899",
 }
+
+DIST_KM_EXPERIMENTS = {"lunar_position"}
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache" / "horizons"
 
@@ -88,21 +97,30 @@ def _build_query_params(body_id: str, epoch_batch: list[float]) -> dict:
 
 
 def _parse_source_tag(response_text: str) -> str:
-    """Extract the ephemeris source tag (e.g. 'DE441') from the Horizons response."""
+    """Extract the ephemeris source tag(s) from the Horizons response."""
     m = re.search(r"Ephemeris\s*/\s*(DE\d+)", response_text)
     if m:
         return m.group(1)
     m = re.search(r"Target body.*?source\s*:\s*(DE\d+)", response_text, re.IGNORECASE)
     if m:
         return m.group(1)
+    tags = []
+    for tag in re.findall(r"\{source\s*:\s*([A-Za-z0-9_+-]+)\}", response_text, re.IGNORECASE):
+        if tag.lower() not in {seen.lower() for seen in tags}:
+            tags.append(tag)
+    if tags:
+        return "+".join(tags)
     return "unknown"
 
 
-def _parse_csv_block(response_text: str) -> list[dict]:
+def _parse_csv_block(response_text: str, expected_epochs: list[float] | None = None) -> list[dict]:
     """Parse $$SOE … $$EOE CSV block from Horizons observer-table output.
 
     Expected CSV columns (QUANTITIES='1,20'):
-      JDTT, , , RA, DEC, delta, deldot,
+      either:
+        JDTT, calendar_date, , RA, DEC, delta, deldot,
+      or:
+        calendar_date, , , RA, DEC, delta, deldot,
 
     With CSV_FORMAT='YES' and ANG_FORMAT='DEG', RA and DEC are in decimal degrees.
     delta is in AU.
@@ -114,25 +132,28 @@ def _parse_csv_block(response_text: str) -> list[dict]:
 
     block = response_text[soe_match.end():eoe_match.start()]
     rows = []
-    for line in block.strip().split("\n"):
+    for row_idx, line in enumerate(block.strip().split("\n")):
         line = line.strip()
         if not line:
             continue
         fields = [f.strip() for f in line.split(",")]
-        # CSV fields: JDTT, calendar_date_str, blank, RA(deg), DEC(deg), delta(AU), deldot, ...
-        # The exact column positions depend on QUANTITIES. With '1,20':
-        #   0: JDTT
-        #   1: calendar date (string)
-        #   2: blank/solar-presence marker
-        #   3: RA (deg)
-        #   4: DEC (deg)
-        #   5: delta (AU)
-        #   6: deldot (km/s)
         try:
-            jd_tt = float(fields[0])
-            ra_deg = float(fields[3])
-            dec_deg = float(fields[4])
-            delta_au = float(fields[5])
+            if re.match(r"^[+-]?\d+(\.\d+)?$", fields[0]):
+                jd_tt = float(fields[0])
+                ra_idx = 3
+                dec_idx = 4
+                delta_idx = 5
+            else:
+                if expected_epochs is None:
+                    raise ValueError("Horizons CSV row omitted JD and no expected epochs were provided")
+                jd_tt = float(expected_epochs[row_idx])
+                ra_idx = 3
+                dec_idx = 4
+                delta_idx = 5
+
+            ra_deg = float(fields[ra_idx])
+            dec_deg = float(fields[dec_idx])
+            delta_au = float(fields[delta_idx])
         except (IndexError, ValueError) as exc:
             raise ValueError(
                 f"Failed to parse Horizons CSV row: {line!r}"
@@ -144,6 +165,10 @@ def _parse_csv_block(response_text: str) -> list[dict]:
             "dec_deg": dec_deg,
             "delta_au": delta_au,
         })
+    if expected_epochs is not None and len(rows) != len(expected_epochs):
+        raise ValueError(
+            f"Horizons response row count mismatch: expected {len(expected_epochs)}, got {len(rows)}"
+        )
     return rows
 
 
@@ -165,7 +190,7 @@ def _fetch_batch(body_id: str, epoch_batch: list[float]) -> tuple[list[dict], st
         raise RuntimeError(f"Horizons API request failed: {exc}") from exc
 
     source_tag = _parse_source_tag(text)
-    rows = _parse_csv_block(text)
+    rows = _parse_csv_block(text, epoch_batch)
     return rows, source_tag
 
 
@@ -173,7 +198,7 @@ def fetch_horizons_reference(experiment: str, epochs, use_cache: bool = True) ->
     """Fetch reference positions from JPL Horizons for the given experiment and epochs.
 
     Args:
-        experiment: experiment ID, e.g. "solar_position" or "lunar_position"
+        experiment: experiment ID, e.g. "solar_position", "lunar_position", or "mars_position"
         epochs: array-like of JD(TT) values
         use_cache: if True, use persistent cache
 
@@ -288,7 +313,7 @@ def _reorder_cases(rows: list[dict], epoch_list: list[float], experiment: str) -
             "dec_rad": row["dec_deg"] * deg_to_rad,
             "dist_au": row["delta_au"],
         }
-        if experiment == "lunar_position":
+        if experiment in DIST_KM_EXPERIMENTS:
             case["dist_km"] = row["delta_au"] * AU_KM
         cases.append(case)
     return cases

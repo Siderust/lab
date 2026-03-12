@@ -23,6 +23,16 @@ import math
 import time
 import numpy as np
 
+PLANET_EXPERIMENTS = {
+    "mercury_position": ("Mercury", 1),
+    "venus_position": ("Venus", 2),
+    "mars_position": ("Mars", 4),
+    "jupiter_position": ("Jupiter", 5),
+    "saturn_position": ("Saturn", 6),
+    "uranus_position": ("Uranus", 7),
+    "neptune_position": ("Neptune", 8),
+}
+
 def normalize3(v):
     r = np.linalg.norm(v)
     if r > 0:
@@ -99,6 +109,22 @@ def moon_ra_dec_dist_meeus(jd_tt):
     ra = ra % (2 * math.pi)
     dec = math.asin(math.sin(ecl_lat)*ce + math.cos(ecl_lat)*se*math.sin(ecl_lon))
     return ra, dec, dist_km
+
+
+def planet_ra_dec_dist_plan94(jd_tt, planet_np, erfa_mod):
+    """Planet geocentric RA/Dec/dist from ERFA plan94 heliocentric states."""
+    date1, date2 = 2451545.0, jd_tt - 2451545.0
+    earth_pv_helio, _earth_pv_bary = erfa_mod.epv00(date1, date2)
+    planet_pv_helio = erfa_mod.plan94(date1, date2, planet_np)
+
+    earth_p = np.array(earth_pv_helio[0], dtype=float)
+    planet_p = np.array(planet_pv_helio["p"], dtype=float)
+    geo = planet_p - earth_p
+
+    dist_au = float(np.linalg.norm(geo))
+    ra = math.atan2(geo[1], geo[0]) % (2 * math.pi)
+    dec = math.asin(geo[2] / dist_au)
+    return ra, dec, dist_au
 
 def run_frame_rotation_bpn(lines_iter):
     """
@@ -410,6 +436,36 @@ def run_lunar_position(lines_iter):
     print()
 
 
+def run_planet_position(lines_iter, experiment, planet_name, planet_np):
+    """Planet geocentric RA/Dec from ERFA plan94."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+    cases = []
+    for i in range(n):
+        jd_tt = float(next(lines_iter).strip())
+        ra, dec, dist_au = planet_ra_dec_dist_plan94(jd_tt, planet_np, erfa)
+        cases.append({
+            "jd_tt": jd_tt,
+            "ra_rad": ra,
+            "dec_rad": dec,
+            "dist_au": dist_au,
+        })
+
+    result = {
+        "experiment": experiment,
+        "library": "astropy",
+        "model": f"ERFA_plan94_{planet_name}_analytic (via erfa)",
+        "count": n,
+        "cases": cases,
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
 def run_kepler_solver(lines_iter):
     """Kepler equation solver — Newton-Raphson."""
     n = int(next(lines_iter).strip())
@@ -644,6 +700,42 @@ def run_lunar_position_perf(lines_iter):
 
     result = {
         "experiment": "lunar_position_perf",
+        "library": "astropy",
+        "count": n,
+        "total_ns": elapsed_ns,
+        "per_op_ns": elapsed_ns / n,
+        "throughput_ops_s": n / (elapsed_ns * 1e-9),
+        "_sink": float(sink),
+    }
+    json.dump(result, sys.stdout, indent=None)
+    print()
+
+
+def run_planet_position_perf(lines_iter, experiment, planet_np):
+    """Performance measurement for planetary position computation."""
+    try:
+        import erfa
+    except ImportError:
+        import astropy._erfa as erfa
+
+    n = int(next(lines_iter).strip())
+
+    jds = []
+    for i in range(n):
+        jds.append(float(next(lines_iter).strip()))
+
+    for i in range(min(n, 100)):
+        planet_ra_dec_dist_plan94(jds[i], planet_np, erfa)
+
+    t0 = time.perf_counter_ns()
+    sink = 0.0
+    for i in range(n):
+        ra, dec, dist_au = planet_ra_dec_dist_plan94(jds[i], planet_np, erfa)
+        sink += ra + dec + dist_au
+    elapsed_ns = time.perf_counter_ns() - t0
+
+    result = {
+        "experiment": f"{experiment}_perf",
         "library": "astropy",
         "count": n,
         "total_ns": elapsed_ns,
@@ -1435,6 +1527,16 @@ def main():
         "inv_equ_ecl": run_inv_equ_ecl,
         "inv_equ_ecl_perf": run_inv_equ_ecl_perf,
     }
+
+    for exp_name, (planet_name, planet_np) in PLANET_EXPERIMENTS.items():
+        dispatch[exp_name] = (
+            lambda lines_iter, exp_name=exp_name, planet_name=planet_name, planet_np=planet_np:
+                run_planet_position(lines_iter, exp_name, planet_name, planet_np)
+        )
+        dispatch[f"{exp_name}_perf"] = (
+            lambda lines_iter, exp_name=exp_name, planet_np=planet_np:
+                run_planet_position_perf(lines_iter, exp_name, planet_np)
+        )
 
     if experiment not in dispatch:
         print(f"Unknown experiment: {experiment}", file=sys.stderr)

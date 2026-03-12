@@ -205,5 +205,12 @@ export const ALL_EXPERIMENTS = [
   "equ_horizontal",
   "solar_position",
   "lunar_position",
+  "mercury_position",
+  "venus_position",
+  "mars_position",
+  "jupiter_position",
+  "saturn_position",
+  "uranus_position",
+  "neptune_position",
   "kepler_solver",
 ] as const;

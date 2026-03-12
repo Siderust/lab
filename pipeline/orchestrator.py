@@ -68,6 +68,17 @@ def candidate_adapters():
         ("anise", [str(ANISE_BIN)]),
     ]
 
+
+PLANET_POSITION_EXPERIMENTS = {
+    "mercury_position": {"body": "Mercury", "distance_key": "dist_au"},
+    "venus_position": {"body": "Venus", "distance_key": "dist_au"},
+    "mars_position": {"body": "Mars", "distance_key": "dist_au"},
+    "jupiter_position": {"body": "Jupiter", "distance_key": "dist_au"},
+    "saturn_position": {"body": "Saturn", "distance_key": "dist_au"},
+    "uranus_position": {"body": "Uranus", "distance_key": "dist_au"},
+    "neptune_position": {"body": "Neptune", "distance_key": "dist_au"},
+}
+
 # ---------------------------------------------------------------------------
 # Experiment descriptions (for non-expert users)
 # ---------------------------------------------------------------------------
@@ -259,6 +270,27 @@ EXPERIMENT_DESCRIPTIONS = {
         "units": "Angular error in mas.", "interpret": "libnova uses ln_get_equ_from_ecl at date.",
     },
 }
+
+for exp_name, cfg in PLANET_POSITION_EXPERIMENTS.items():
+    body = cfg["body"]
+    EXPERIMENT_DESCRIPTIONS[exp_name] = {
+        "title": f"{body} Geocentric Position",
+        "what": (
+            f"Computes astrometric geocentric RA/Dec of {body} at given epochs. "
+            "Accuracy reference is JPL Horizons (astrometric geocentric, ICRF, Earth geocenter, TT)."
+        ),
+        "why": (
+            f"{body} position is needed for planetary observation planning, guiding, and "
+            "cross-checking analytic ephemerides against JPL kernels."
+        ),
+        "units": (
+            f"Angular separation in arcseconds between JPL Horizons reference and candidate {body} positions."
+        ),
+        "interpret": (
+            "Lower error = closer to JPL Horizons DE441 ephemeris. "
+            "Differences measure absolute ephemeris accuracy, not cross-library agreement."
+        ),
+    }
 
 # ---------------------------------------------------------------------------
 # Progress tracking
@@ -503,6 +535,11 @@ def generate_lunar_position_inputs(n: int, seed: int):
     return np.concatenate([typical, edge])[:n]
 
 
+def generate_planet_position_inputs(n: int, seed: int):
+    """Generate epoch inputs for planetary position experiments."""
+    return generate_solar_position_inputs(n, seed)
+
+
 def generate_kepler_inputs(n: int, seed: int):
     """Generate inputs for Kepler's equation experiment.
 
@@ -725,20 +762,22 @@ def format_equ_horizontal_perf_input(jd_ut1, jd_tt, ra, dec, lon, lat):
     return "\n".join(lines) + "\n"
 
 
-def format_solar_position_perf_input(epochs):
-    """Format input for solar position performance experiment."""
-    lines = ["solar_position_perf", str(len(epochs))]
+def _format_external_position_perf_input(experiment, epochs):
+    """Format input for solar/lunar/planetary position performance experiments."""
+    lines = [f"{experiment}_perf", str(len(epochs))]
     for jd in epochs:
         lines.append(f"{jd:.15f}")
     return "\n".join(lines) + "\n"
+
+
+def format_solar_position_perf_input(epochs):
+    """Format input for solar position performance experiment."""
+    return _format_external_position_perf_input("solar_position", epochs)
 
 
 def format_lunar_position_perf_input(epochs):
     """Format input for lunar position performance experiment."""
-    lines = ["lunar_position_perf", str(len(epochs))]
-    for jd in epochs:
-        lines.append(f"{jd:.15f}")
-    return "\n".join(lines) + "\n"
+    return _format_external_position_perf_input("lunar_position", epochs)
 
 
 def format_kepler_perf_input(M_arr, e_arr):
@@ -765,20 +804,22 @@ def format_equ_horizontal_input(jd_ut1, jd_tt, ra, dec, lon, lat):
     return "\n".join(lines) + "\n"
 
 
-def format_solar_position_input(epochs):
-    """Format input for solar_position experiment: jd_tt per line."""
-    lines = ["solar_position", str(len(epochs))]
+def _format_external_position_input(experiment, epochs):
+    """Format input for solar/lunar/planetary position experiments."""
+    lines = [experiment, str(len(epochs))]
     for jd in epochs:
         lines.append(f"{jd:.15f}")
     return "\n".join(lines) + "\n"
+
+
+def format_solar_position_input(epochs):
+    """Format input for solar_position experiment: jd_tt per line."""
+    return _format_external_position_input("solar_position", epochs)
 
 
 def format_lunar_position_input(epochs):
     """Format input for lunar_position experiment: jd_tt per line."""
-    lines = ["lunar_position", str(len(epochs))]
-    for jd in epochs:
-        lines.append(f"{jd:.15f}")
-    return "\n".join(lines) + "\n"
+    return _format_external_position_input("lunar_position", epochs)
 
 
 def format_kepler_input(M_arr, e_arr):
@@ -1293,6 +1334,49 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator", candi
         )
         base["ephemeris_source"] = "JPL Horizons (DE441) for reference; Meeus/ELP 2000/DE440 for candidates"
 
+    elif experiment in PLANET_POSITION_EXPERIMENTS:
+        body = PLANET_POSITION_EXPERIMENTS[experiment]["body"]
+        base["models"] = {
+            "jpl_horizons": (
+                f"JPL Horizons astrometric geocentric RA/Dec of {body} "
+                "(DE441, ICRF, Earth geocenter, TT)"
+            ),
+            "erfa": (
+                f"ERFA eraPlan94 heliocentric {body} analytic state minus eraEpv00 Earth state "
+                "(geometric, J2000 equatorial)"
+            ),
+            "siderust": (
+                f"VSOP87A heliocentric {body} state shifted to geocenter, then rotated to ICRS "
+                "(geometric, no aberration)"
+            ),
+            "astropy": (
+                f"ERFA plan94 heliocentric {body} analytic state minus erfa.epv00 Earth state "
+                "(geometric, J2000 equatorial)"
+            ),
+            "libnova": (
+                f"VSOP87 via ln_get_{body.lower()}_equ_coords / "
+                f"ln_get_{body.lower()}_earth_dist"
+            ),
+            "anise": (
+                f"SPK translation {body.upper()}_J2000 -> EARTH_J2000 "
+                "(DE440 ephemeris, geometric state vector)"
+            ),
+        }
+        base["model_parity_class"] = "external-reference"
+        base["accuracy_interpretation"] = (
+            f"agreement with JPL Horizons DE441 astrometric geocentric reference for {body}"
+        )
+        base["reference_mode"] = "astrometric geocentric RA/Dec"
+        base["reference_frame"] = "ICRF"
+        base["reference_center"] = "Earth geocenter (500@399)"
+        base["reference_time_scale"] = "TT"
+        base["ephemeris_source"] = "JPL Horizons (DE441) for reference; VSOP87/plan94/SPK for candidates"
+        base["note"] = (
+            f"Accuracy reference is JPL Horizons astrometric geocentric RA/Dec for {body} (DE441). "
+            "Candidate libraries use their native analytic or SPK-backed ephemerides, so this experiment "
+            "measures absolute error against JPL rather than same-model implementation drift."
+        )
+
     elif experiment == "kepler_solver":
         base["models"] = {
             "erfa": "Newton-Raphson iteration (100 iters, tol 1e-15)",
@@ -1612,6 +1696,16 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator", candi
         },
     }
 
+    for exp_name in PLANET_POSITION_EXPERIMENTS:
+        _CANDIDATE_PARITY.setdefault(exp_name, {
+            "jpl_horizons": "reference",
+            "erfa": "external-reference",
+            "astropy": "external-reference",
+            "siderust": "external-reference",
+            "libnova": "external-reference",
+            "anise": "external-reference",
+        })
+
     if candidate_library:
         exp_parity = _CANDIDATE_PARITY.get(experiment, {})
         base["candidate_parity"] = exp_parity.get(candidate_library, base.get("model_parity_class", "unknown"))
@@ -1819,14 +1913,20 @@ def generate_summary_table(all_results: list) -> str:
         lines.append("")
 
     # --- Angular experiments (equ_ecl, equ_horizontal, solar_position, etc.) ---
-    for exp_name, title in [
+    angular_summary_experiments = [
         ("equ_ecl", "Equatorial ↔ Ecliptic Transform"),
         ("equ_horizontal", "Equatorial → Horizontal (AltAz)"),
         ("solar_position", "Sun Geocentric Position"),
         ("lunar_position", "Moon Geocentric Position"),
         ("icrs_ecl_tod", "ICRS → Ecliptic of Date"),
         ("horiz_to_equ", "Horizontal → Equatorial (AltAz → RA/Dec)"),
-    ]:
+    ]
+    angular_summary_experiments.extend(
+        (exp_name, f"{cfg['body']} Geocentric Position")
+        for exp_name, cfg in PLANET_POSITION_EXPERIMENTS.items()
+    )
+
+    for exp_name, title in angular_summary_experiments:
         exp_results = [r for r in all_results if r.get("experiment") == exp_name]
         if not exp_results:
             continue
@@ -2355,6 +2455,26 @@ def run_experiment_lunar_position(n: int, seed: int, run_perf: bool = True,
     )
 
 
+def run_experiment_planet_position(exp_name: str, n: int, seed: int, run_perf: bool = True,
+                                   perf_rounds: int = DEFAULT_PERF_ROUNDS):
+    """Run one planetary geocentric position experiment vs JPL Horizons."""
+    if exp_name not in PLANET_POSITION_EXPERIMENTS:
+        raise KeyError(f"Unknown planetary position experiment '{exp_name}'")
+
+    def _planet_gen(n, seed):
+        epochs = generate_planet_position_inputs(n, seed)
+        return (epochs,)
+
+    return _run_external_reference_experiment(
+        exp_name=exp_name, n=n, seed=seed, run_perf=run_perf, perf_rounds=perf_rounds,
+        input_gen_fn=_planet_gen,
+        input_fmt_fn=lambda epochs, exp_name=exp_name: _format_external_position_input(exp_name, epochs),
+        perf_fmt_fn=lambda epochs, exp_name=exp_name: _format_external_position_perf_input(exp_name, epochs),
+        accuracy_fn=compute_angular_accuracy,
+        accuracy_kwargs={"ra_key": "ra_rad", "dec_key": "dec_rad", "extra_keys": ["dist_au"]},
+    )
+
+
 def run_experiment_kepler_solver(n: int, seed: int, run_perf: bool = True,
                                   perf_rounds: int = DEFAULT_PERF_ROUNDS):
     """Run the kepler_solver experiment: Kepler's equation M→E→ν."""
@@ -2510,9 +2630,10 @@ def write_results(results: list, experiment: str, timestamp_str: str | None = No
 # ---------------------------------------------------------------------------
 
 def main():
+    planet_experiments = list(PLANET_POSITION_EXPERIMENTS.keys())
     all_experiments = [
         "frame_rotation_bpn", "gmst_era", "equ_ecl", "equ_horizontal",
-        "solar_position", "lunar_position", "kepler_solver",
+        "solar_position", "lunar_position", *planet_experiments, "kepler_solver",
         "frame_bias", "precession", "nutation", "icrs_ecl_j2000",
         "icrs_ecl_tod", "horiz_to_equ",
         # 13 new matrix experiments
@@ -2646,6 +2767,11 @@ def main():
         "inv_equ_ecl": lambda: run_experiment_inv_equ_ecl_dir(
             args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds),
     }
+
+    for exp_name in planet_experiments:
+        dispatch[exp_name] = lambda exp_name=exp_name: run_experiment_planet_position(
+            exp_name, args.n, args.seed, run_perf=run_perf, perf_rounds=args.perf_rounds
+        )
 
     total_experiments = len(experiments_to_run)
     for exp_idx, exp in enumerate(experiments_to_run, 1):

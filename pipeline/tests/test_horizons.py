@@ -41,6 +41,7 @@ from horizons_client import (
     BATCH_SIZE,
     AU_KM,
     CACHE_DIR,
+    HORIZONS_BODIES,
 )
 
 
@@ -79,6 +80,19 @@ $$EOE
 *******************************************************************************
 """
 
+SAMPLE_MARS_RESPONSE = """\
+*******************************************************************************
+Ephemeris / API_USER Thu Mar 12 16:02:38 2026 Pasadena, USA      / Horizons
+Target body name: Mars (499)                      {source: mar099}
+Center body name: Earth (399)                     {source: DE441}
+*******************************************************************************
+$$SOE
+ 1987-Oct-12 08:24:50.515, , , 182.642373589,  -0.065640629,  2.59333643461701, -5.7254651,
+ 2000-Jan-01 12:00:00.000, , , 330.524049117, -13.180707612,  1.84968383439833,  9.3886287,
+$$EOE
+*******************************************************************************
+"""
+
 
 # ---------------------------------------------------------------------------
 # Tests: Horizons response parsing
@@ -94,6 +108,9 @@ class TestParseSourceTag:
     def test_parses_de440(self):
         text = "Ephemeris / DE440\nsome other content"
         assert _parse_source_tag(text) == "DE440"
+
+    def test_parses_combined_planetary_source_tags(self):
+        assert _parse_source_tag(SAMPLE_MARS_RESPONSE) == "mar099+DE441"
 
 
 class TestParseCsvBlock:
@@ -117,6 +134,14 @@ class TestParseCsvBlock:
     def test_missing_soe_raises(self):
         with pytest.raises(ValueError, match="SOE"):
             _parse_csv_block("no markers here")
+
+    def test_parses_calendar_only_rows_when_epochs_are_known(self):
+        epochs = [2447080.850584669, 2451545.0]
+        rows = _parse_csv_block(SAMPLE_MARS_RESPONSE, epochs)
+        assert len(rows) == 2
+        assert rows[0]["jd_tt"] == epochs[0]
+        assert abs(rows[0]["ra_deg"] - 182.642373589) < 1e-9
+        assert abs(rows[1]["delta_au"] - 1.84968383439833) < 1e-12
 
 
 class TestReorderCases:
@@ -164,12 +189,29 @@ class TestReorderCases:
         assert "dist_km" not in cases[0]
         assert "dist_au" in cases[0]
 
+    def test_planets_keep_dist_au(self):
+        rows = [
+            {"jd_tt": 100.0, "ra_deg": 10.0, "dec_deg": 20.0, "delta_au": 1.523},
+        ]
+        cases = _reorder_cases(rows, [100.0], "mars_position")
+        assert "dist_km" not in cases[0]
+        assert abs(cases[0]["dist_au"] - 1.523) < 1e-12
+
 
 # ---------------------------------------------------------------------------
 # Tests: Batching
 # ---------------------------------------------------------------------------
 
 class TestBatching:
+    def test_planet_body_ids_are_mapped(self):
+        assert HORIZONS_BODIES["mercury_position"] == "199"
+        assert HORIZONS_BODIES["venus_position"] == "299"
+        assert HORIZONS_BODIES["mars_position"] == "499"
+        assert HORIZONS_BODIES["jupiter_position"] == "599"
+        assert HORIZONS_BODIES["saturn_position"] == "699"
+        assert HORIZONS_BODIES["uranus_position"] == "799"
+        assert HORIZONS_BODIES["neptune_position"] == "899"
+
     def test_build_query_params(self):
         params = _build_query_params("10", [2451545.0, 2460310.5])
         assert params["COMMAND"] == "'10'"
@@ -428,3 +470,20 @@ class TestExternalReferenceOrchestrator:
             alignment = results[0]["alignment"]
             assert alignment["horizons_source"] == "DE441"
             assert "horizons_cache_key" in alignment
+
+    def test_planet_produces_jpl_horizons_reference(self, mock_horizons_solar, mock_adapter_result):
+        """Planet experiments should use Horizons as the external reference."""
+        import orchestrator as orch
+        with patch.object(orch, "fetch_horizons_reference", mock_horizons_solar), \
+             patch.object(orch, "run_adapter", return_value=mock_adapter_result(10)), \
+             patch.object(orch, "ensure_rust_adapters_built"):
+
+            results = orch.run_experiment_planet_position(
+                "mars_position", n=10, seed=42, run_perf=False
+            )
+
+            assert len(results) > 0
+            for r in results:
+                assert r["experiment"] == "mars_position"
+                assert r["reference_library"] == "jpl_horizons"
+                assert r["reference_performance"] == {}

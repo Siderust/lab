@@ -15,6 +15,13 @@ LIBNOVA_SRCS := \
 	$(LIBNOVA_SRC_DIR)/solar.c \
 	$(LIBNOVA_SRC_DIR)/earth.c \
 	$(LIBNOVA_SRC_DIR)/vsop87.c \
+	$(LIBNOVA_SRC_DIR)/mercury.c \
+	$(LIBNOVA_SRC_DIR)/venus.c \
+	$(LIBNOVA_SRC_DIR)/mars.c \
+	$(LIBNOVA_SRC_DIR)/jupiter.c \
+	$(LIBNOVA_SRC_DIR)/saturn.c \
+	$(LIBNOVA_SRC_DIR)/uranus.c \
+	$(LIBNOVA_SRC_DIR)/neptune.c \
 	$(LIBNOVA_SRC_DIR)/lunar.c \
 	$(LIBNOVA_SRC_DIR)/elliptic_motion.c \
 	$(LIBNOVA_SRC_DIR)/julian_day.c \
