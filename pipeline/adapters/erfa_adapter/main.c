@@ -940,7 +940,7 @@ static void run_frame_bias_perf(void) {
 
 /* ------------------------------------------------------------------ */
 /* Experiment: precession                                              */
-/* EquatorialMeanJ2000 → EquatorialMeanOfDate via eraPmat06            */
+/* EquatorialMeanJ2000 → EquatorialMeanOfDate via eraBp06 pure rp      */
 /* Input per line: jd_tt vx vy vz                                      */
 /* ------------------------------------------------------------------ */
 
@@ -958,8 +958,8 @@ static void run_precession(void) {
             fprintf(stderr, "bad input line %d\n", i); exit(1);
         }
         double date1 = 2451545.0, date2 = jd_tt - 2451545.0;
-        double rp[3][3];
-        eraPmat06(date1, date2, rp);
+        double rb[3][3], rp[3][3], rbp[3][3];
+        eraBp06(date1, date2, rb, rp, rbp);
 
         double vin[3] = {vx, vy, vz};
         normalize3(vin);
@@ -998,16 +998,16 @@ static void run_precession_perf(void) {
     }
 
     for (int i = 0; i < n && i < 100; i++) {
-        double rp[3][3];
-        eraPmat06(2451545.0, jds[i] - 2451545.0, rp);
+        double rb[3][3], rp[3][3], rbp[3][3];
+        eraBp06(2451545.0, jds[i] - 2451545.0, rb, rp, rbp);
     }
 
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
     double vout[3];
     for (int i = 0; i < n; i++) {
-        double rp[3][3];
-        eraPmat06(2451545.0, jds[i] - 2451545.0, rp);
+        double rb[3][3], rp[3][3], rbp[3][3];
+        eraBp06(2451545.0, jds[i] - 2451545.0, rb, rp, rbp);
         double vin[3] = {vecs[3*i], vecs[3*i+1], vecs[3*i+2]};
         normalize3(vin);
         mv3(rp, vin, vout);
@@ -1474,8 +1474,8 @@ static void mat_inv_frame_bias(double jd_tt, double d1, double d2, double m[3][3
 
 static void mat_inv_precession(double jd_tt, double d1, double d2, double m[3][3]) {
     (void)jd_tt;
-    double rp[3][3];
-    eraPmat06(d1, d2, rp);
+    double rb[3][3], rp[3][3], rbp[3][3];
+    eraBp06(d1, d2, rb, rp, rbp);
     for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r][c] = rp[c][r];
 }
 
@@ -1537,8 +1537,8 @@ static void mat_inv_bias_precession(double jd_tt, double d1, double d2, double m
 static void mat_precession_nutation(double jd_tt, double d1, double d2, double m[3][3]) {
     /* EqMeanJ2000 → EqTrueOfDate: P × N composed (= NxP product) */
     (void)jd_tt;
-    double rp[3][3], rn[3][3];
-    eraPmat06(d1, d2, rp);
+    double rb[3][3], rp[3][3], rbp[3][3], rn[3][3];
+    eraBp06(d1, d2, rb, rp, rbp);
     eraNum06a(d1, d2, rn);
     /* m = rn × rp */
     for (int r = 0; r < 3; r++)

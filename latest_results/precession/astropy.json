@@ -1,0 +1,208 @@
+{
+  "experiment": "precession",
+  "candidate_library": "astropy",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Precession (Mean J2000 \u2192 Mean of Date)",
+    "what": "Applies the IAU precession matrix to rotate from mean J2000 to mean equator and equinox of date.",
+    "why": "Precession is the largest component of the BPN matrix. This isolates it from nutation and frame bias to pinpoint model accuracy.",
+    "units": "Angular error in mas (milliarcseconds).",
+    "interpret": "ERFA/Astropy use IAU 2006 precession. Siderust uses the same model. libnova uses Meeus \u2014 expect arcsec-level differences."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "IAU 2006 pure precession matrix from eraBp06 \u2192 rp",
+      "siderust": "IAU 2006 precession via frame rotation provider (EquatorialMeanJ2000 \u2192 EquatorialMeanOfDate)",
+      "astropy": "IAU 2006 pure precession via bundled ERFA (erfa.bp06 \u2192 rp)",
+      "libnova": "Meeus precession (\u03b6,z,\u03b8 Equ 20.3) via ln_get_equ_prec2",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-mismatch",
+    "accuracy_interpretation": "agreement with ERFA baseline (libnova uses Meeus model)",
+    "note": "ERFA, Astropy, and Siderust all use the pure IAU 2006 precession matrix (bp06 `rp`). libnova uses Meeus precession formulae \u2014 expect arcsec-level differences.",
+    "candidate_parity": "model-parity"
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "0e83e1fe3685b6ec"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "astropy",
+    "angular_error_mas": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 3.073585126505738,
+      "max": 4.3467057710126396,
+      "min": 0.0,
+      "mean": 0.09317176357171013,
+      "rms": 0.5750151246234356
+    },
+    "closure_error_rad": {
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 1.4901161193847656e-08,
+      "max": 2.1073424255447017e-08,
+      "min": 0.0,
+      "mean": 3.936024541016384e-10,
+      "rms": 2.448510635667292e-09
+    },
+    "matrix_frobenius": null,
+    "nan_count": 0,
+    "inf_count": 0,
+    "worst_cases": [
+      {
+        "jd_tt": 2481853.0703679114,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2484081.195729338,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2485762.1003232463,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2479827.0897245808,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2478345.34649392,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2463146.641545129,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2461523.1621695696,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2459010.6138326493,
+        "angular_error_mas": 4.3467057710126396
+      },
+      {
+        "jd_tt": 2468591.98466113,
+        "angular_error_mas": 3.073585126505738
+      },
+      {
+        "jd_tt": 2465461.800283174,
+        "angular_error_mas": 3.073585126505738
+      }
+    ]
+  },
+  "performance": {
+    "per_op_ns": 1883.43106,
+    "per_op_ns_mean": 1872.100408,
+    "per_op_ns_median": 1883.43106,
+    "per_op_ns_std_dev": 117.42674799669044,
+    "per_op_ns_min": 1746.70214,
+    "per_op_ns_max": 2011.85222,
+    "per_op_ns_ci95": [
+      1799.3185555483535,
+      1944.8822604516465
+    ],
+    "per_op_ns_cv_pct": 6.272459932965862,
+    "throughput_ops_s": 530945.9004037026,
+    "total_ns_median": 94171553.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      1969.04894,
+      1995.61316,
+      1746.70214,
+      2011.85222,
+      1749.61502,
+      1746.92374,
+      1965.04744,
+      1966.924,
+      1801.81468,
+      1767.46274
+    ],
+    "valid": true,
+    "warnings": []
+  },
+  "reference_performance": {
+    "per_op_ns": 99.2,
+    "per_op_ns_mean": 98.52,
+    "per_op_ns_median": 99.2,
+    "per_op_ns_std_dev": 6.570100624969319,
+    "per_op_ns_min": 91.2,
+    "per_op_ns_max": 113.4,
+    "per_op_ns_ci95": [
+      94.44780944344583,
+      102.59219055655416
+    ],
+    "per_op_ns_cv_pct": 6.668798847918514,
+    "throughput_ops_s": 10080645.161290321,
+    "total_ns_median": 4960019.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      91.3,
+      91.2,
+      93.7,
+      94.7,
+      113.4,
+      99.4,
+      102.9,
+      100.0,
+      99.0,
+      99.6
+    ],
+    "valid": true,
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-03-12T21:46:29Z",
+    "git_shas": {
+      "lab": "cc373bc93395",
+      "siderust": "e6b3cbbcbbf7",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

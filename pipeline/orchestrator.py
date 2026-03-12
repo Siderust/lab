@@ -163,10 +163,10 @@ EXPERIMENT_DESCRIPTIONS = {
         "title": "Nutation (Mean of Date → True of Date)",
         "what": "Applies the nutation matrix to rotate from mean equator/equinox of date "
                 "to true equator/equinox of date.",
-        "why": "Nutation oscillates ±9 arcsec. Isolating it reveals IAU 2000A vs 2000B differences.",
+        "why": "Nutation oscillates ±9 arcsec. Isolating it reveals agreement with the SOFA IAU 2006/2000A reference.",
         "units": "Angular error in mas (milliarcseconds).",
-        "interpret": "ERFA/Astropy use IAU 2000A (1365 terms). Siderust uses IAU 2000B (77 terms). "
-                     "libnova uses IAU 1980 (69 terms). Expect ~1 mas difference (2000A vs 2000B).",
+        "interpret": "ERFA/Astropy/Siderust use IAU 2006/2000A nutation. "
+                     "libnova uses IAU 1980 (69 terms), so arcsecond-scale differences are expected there.",
     },
     "icrs_ecl_j2000": {
         "title": "ICRS → Ecliptic J2000",
@@ -1189,7 +1189,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator", candi
     if experiment == "frame_rotation_bpn":
         base["models"] = {
             "erfa": "IAU 2006/2000A bias-precession-nutation (eraPnm06a)",
-            "siderust": "IERS 2003 frame bias + IAU 2006 precession + IAU 2000B nutation (frame_rotation provider)",
+            "siderust": "IERS 2003 frame bias + IAU 2006 precession + IAU 2006/2000A nutation (frame_rotation provider)",
             "astropy": "IAU 2006/2000A via bundled ERFA (erfa.pnm06a)",
             "libnova": "Meeus precession (ζ,z,θ Equ 20.3) + IAU 1980 nutation (63-term Table 21A), applied as RA/Dec corrections (no BPN matrix)",
         }
@@ -1198,7 +1198,7 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator", candi
         base["mode"] = mode
         base["note"] = (
             "ERFA and Astropy use the same IAU 2006/2000A model (reference). "
-            "Siderust uses IAU 2006 precession + IAU 2000B nutation (close to ERFA, with 2000B vs 2000A differences). "
+            "Siderust now uses the same IAU 2006/2000A decomposition. "
             "libnova uses Meeus precession + IAU 1980 nutation via coordinate-level API (no rotation matrix). "
             "Differences measure the model gap, not implementation bugs."
         )
@@ -1324,30 +1324,30 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator", candi
 
     elif experiment == "precession":
         base["models"] = {
-            "erfa": "IAU 2006 precession matrix from eraPmat06",
+            "erfa": "IAU 2006 pure precession matrix from eraBp06 → rp",
             "siderust": "IAU 2006 precession via frame rotation provider (EquatorialMeanJ2000 → EquatorialMeanOfDate)",
-            "astropy": "IAU 2006 precession via bundled ERFA (erfa.pmat06)",
+            "astropy": "IAU 2006 pure precession via bundled ERFA (erfa.bp06 → rp)",
             "libnova": "Meeus precession (ζ,z,θ Equ 20.3) via ln_get_equ_prec2",
         }
         base["model_parity_class"] = "model-mismatch"
         base["accuracy_interpretation"] = "agreement with ERFA baseline (libnova uses Meeus model)"
         base["note"] = (
-            "ERFA, Astropy, and Siderust all use IAU 2006 precession. "
+            "ERFA, Astropy, and Siderust all use the pure IAU 2006 precession matrix (bp06 `rp`). "
             "libnova uses Meeus precession formulae — expect arcsec-level differences."
         )
 
     elif experiment == "nutation":
         base["models"] = {
             "erfa": "IAU 2000A nutation (1365 terms) via eraNum06a",
-            "siderust": "IAU 2000B nutation (77 terms) via frame rotation provider",
+            "siderust": "IAU 2006/2000A nutation via frame rotation provider",
             "astropy": "IAU 2000A nutation via bundled ERFA (erfa.num06a)",
             "libnova": "IAU 1980 nutation (69 terms) via ln_get_equ_nut / ln_nutation",
         }
         base["model_parity_class"] = "model-mismatch"
-        base["accuracy_interpretation"] = "agreement with ERFA baseline (nutation models differ in term count)"
+        base["accuracy_interpretation"] = "agreement with ERFA baseline (libnova uses the older IAU 1980 model)"
         base["note"] = (
-            "IAU 2000A (ERFA/Astropy) has 1365 terms, 2000B (Siderust) has 77 terms (~1 mas difference), "
-            "IAU 1980 (libnova) has 69 terms (~tens of mas difference)."
+            "ERFA, Astropy, and Siderust use the same IAU 2006/2000A nutation model. "
+            "IAU 1980 (libnova) has 69 terms and will differ by tens of mas."
         )
 
     elif experiment == "icrs_ecl_j2000":
@@ -1408,9 +1408,9 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator", candi
 
     elif experiment in ("inv_precession",):
         base["models"] = {
-            "erfa": "Transpose of IAU 2006 precession matrix (eraPmat06 → rp^T)",
+            "erfa": "Transpose of pure IAU 2006 precession matrix (eraBp06 → rp^T)",
             "siderust": "EquatorialMeanOfDate → EquatorialMeanJ2000 via frame rotation inverse",
-            "astropy": "Transpose of IAU 2006 precession via bundled ERFA",
+            "astropy": "Transpose of pure IAU 2006 precession via bundled ERFA",
             "libnova": "Meeus inverse precession via ln_get_equ_prec2(date→J2000)",
         }
         base["model_parity_class"] = "model-mismatch"
@@ -1464,9 +1464,9 @@ def alignment_checklist(experiment: str, mode: str = "common_denominator", candi
 
     elif experiment in ("precession_nutation", "inv_precession_nutation"):
         base["models"] = {
-            "erfa": "N×P composed matrix (eraPmat06 × eraNum06a / transpose)",
+            "erfa": "N×P composed matrix (eraNum06a × pure eraBp06-rp / transpose)",
             "siderust": "EquatorialMeanJ2000 ↔ EquatorialTrueOfDate via frame rotation",
-            "astropy": "N×P composed via bundled ERFA",
+            "astropy": "N×P composed via bundled ERFA (num06a × bp06-rp)",
             "libnova": "ln_get_equ_prec + ln_get_equ_nut sequenced / approximate inverse",
         }
         base["model_parity_class"] = "model-mismatch"

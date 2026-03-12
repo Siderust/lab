@@ -774,7 +774,7 @@ def run_frame_bias_perf(lines_iter):
 
 
 def run_precession(lines_iter):
-    """EquatorialMeanJ2000 → EquatorialMeanOfDate via erfa.pmat06."""
+    """EquatorialMeanJ2000 → EquatorialMeanOfDate via erfa.bp06 pure-precession rp."""
     try:
         import erfa
     except ImportError:
@@ -788,7 +788,7 @@ def run_precession(lines_iter):
         vin = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
         vin = normalize3(vin)
 
-        rp = erfa.pmat06(2451545.0, jd_tt - 2451545.0)
+        _rb, rp, _rbp = erfa.bp06(2451545.0, jd_tt - 2451545.0)
         vout = normalize3(rp @ vin)
 
         vback = normalize3(rp.T @ vout)
@@ -804,7 +804,7 @@ def run_precession(lines_iter):
     result = {
         "experiment": "precession",
         "library": "astropy",
-        "model": "IAU_2006_precession (via erfa.pmat06)",
+        "model": "IAU_2006_precession (via erfa.bp06/rp)",
         "count": n,
         "cases": cases,
     }
@@ -829,12 +829,12 @@ def run_precession_perf(lines_iter):
         vecs.append(normalize3(v))
 
     for i in range(min(n, 100)):
-        erfa.pmat06(2451545.0, jds[i] - 2451545.0)
+        erfa.bp06(2451545.0, jds[i] - 2451545.0)
 
     t0 = time.perf_counter_ns()
     sink = np.zeros(3)
     for i in range(n):
-        rp = erfa.pmat06(2451545.0, jds[i] - 2451545.0)
+        _rb, rp, _rbp = erfa.bp06(2451545.0, jds[i] - 2451545.0)
         sink = rp @ vecs[i]
     elapsed_ns = time.perf_counter_ns() - t0
 
@@ -1286,7 +1286,7 @@ def _mat_inv_frame_bias(jd_tt, d1, d2):
 
 def _mat_inv_precession(jd_tt, d1, d2):
     erfa = _get_erfa()
-    rp = erfa.pmat06(d1, d2)
+    _rb, rp, _rbp = erfa.bp06(d1, d2)
     return rp.T
 
 def _mat_inv_nutation(jd_tt, d1, d2):
@@ -1328,7 +1328,7 @@ def _mat_inv_bias_precession(jd_tt, d1, d2):
 
 def _mat_precession_nutation(jd_tt, d1, d2):
     erfa = _get_erfa()
-    rp = erfa.pmat06(d1, d2)
+    _rb, rp, _rbp = erfa.bp06(d1, d2)
     rn = erfa.num06a(d1, d2)
     return rn @ rp
 

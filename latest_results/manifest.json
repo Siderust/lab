@@ -1,0 +1,103 @@
+{
+  "run_id": "2026-03-12_21-43-00",
+  "config": {
+    "experiments": [
+      "frame_rotation_bpn",
+      "gmst_era",
+      "equ_ecl",
+      "equ_horizontal",
+      "solar_position",
+      "lunar_position",
+      "kepler_solver",
+      "frame_bias",
+      "precession",
+      "nutation",
+      "icrs_ecl_j2000",
+      "icrs_ecl_tod",
+      "horiz_to_equ",
+      "inv_frame_bias",
+      "inv_precession",
+      "inv_nutation",
+      "inv_bpn",
+      "inv_icrs_ecl_j2000",
+      "obliquity",
+      "inv_obliquity",
+      "bias_precession",
+      "inv_bias_precession",
+      "precession_nutation",
+      "inv_precession_nutation",
+      "inv_icrs_ecl_tod",
+      "inv_equ_ecl"
+    ],
+    "n": 1000,
+    "seed": 42,
+    "perf_enabled": true,
+    "perf_rounds": 10,
+    "ci_mode": false
+  },
+  "metadata": {
+    "date": "2026-03-12T21:54:19Z",
+    "git_shas": {
+      "lab": "cc373bc93395",
+      "siderust": "e6b3cbbcbbf7",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  },
+  "completeness": {
+    "requested": 26,
+    "completed": 24,
+    "missing": [
+      "lunar_position",
+      "solar_position"
+    ],
+    "completed_experiments": [
+      "bias_precession",
+      "equ_ecl",
+      "equ_horizontal",
+      "frame_bias",
+      "frame_rotation_bpn",
+      "gmst_era",
+      "horiz_to_equ",
+      "icrs_ecl_j2000",
+      "icrs_ecl_tod",
+      "inv_bias_precession",
+      "inv_bpn",
+      "inv_equ_ecl",
+      "inv_frame_bias",
+      "inv_icrs_ecl_j2000",
+      "inv_icrs_ecl_tod",
+      "inv_nutation",
+      "inv_obliquity",
+      "inv_precession",
+      "inv_precession_nutation",
+      "kepler_solver",
+      "nutation",
+      "obliquity",
+      "precession",
+      "precession_nutation"
+    ],
+    "libraries": [
+      "anise",
+      "astropy",
+      "libnova",
+      "siderust"
+    ]
+  },
+  "experiment_count": 24,
+  "total_results": 71
+}

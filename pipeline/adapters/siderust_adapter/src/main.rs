@@ -17,7 +17,7 @@ use siderust::calculus::kepler_equations::solve_keplers_equation;
 use siderust::calculus::lunar::meeus_ch47;
 use siderust::coordinates::cartesian;
 use siderust::coordinates::centers::{Geocentric, Geodetic, Heliocentric};
-use siderust::coordinates::frames::{ECEF, EquatorialTrueOfDate, ICRS};
+use siderust::coordinates::frames::{EquatorialTrueOfDate, ECEF, ICRS};
 use siderust::coordinates::transform::ecliptic_of_date::FromEclipticTrueOfDate;
 use siderust::coordinates::transform::horizontal::FromHorizontal;
 use siderust::coordinates::transform::providers::frame_rotation;
@@ -46,7 +46,7 @@ fn run_frame_rotation_bpn(lines: &mut impl Iterator<Item = String>) {
     write!(
         out,
         "{{\"experiment\":\"frame_rotation_bpn\",\"library\":\"siderust\",\
-         \"model\":\"IAU2006_precession+IAU2000B_nutation+IERS2003_bias\",\
+         \"model\":\"IAU2006_precession+IAU2006A_nutation+IERS2003_bias\",\
          \"count\":{},\"cases\":[\n",
         n
     )

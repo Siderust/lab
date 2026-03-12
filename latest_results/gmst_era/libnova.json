@@ -1,0 +1,167 @@
+{
+  "experiment": "gmst_era",
+  "candidate_library": "libnova",
+  "reference_library": "erfa",
+  "description": {
+    "title": "Greenwich Mean Sidereal Time & Earth Rotation Angle",
+    "what": "Computes GMST (how far the Earth has rotated relative to the stars) and ERA (the raw rotation angle) at given epochs.",
+    "why": "Time-scale conversions underpin all ground-based astronomical observations. Small errors here compound in coordinate transforms.",
+    "units": "GMST error in arcseconds; ERA error in radians.",
+    "interpret": "Lower error = better agreement with ERFA's IAU 2006 polynomial. Libnova uses Meeus formula which differs at the arcsecond level."
+  },
+  "alignment": {
+    "units": {
+      "angles": "radians (internal), mas for error reporting",
+      "distances": "meters",
+      "float_type": "f64"
+    },
+    "time_input": "JD (Julian Date), TT scale for precession/nutation, UT1 for sidereal time",
+    "time_scales": "TT for BPN matrix; UT1\u2248TT-69.184s simplified",
+    "leap_seconds": "not applicable (JD input, no UTC conversion in this experiment)",
+    "earth_orientation": {
+      "ut1_minus_utc": "not used (JD(TT) input)",
+      "polar_motion_xp_yp": "zero (not applied)",
+      "eop_mode": "disabled"
+    },
+    "geodesy": "not applicable (direction-only experiment)",
+    "refraction": "disabled",
+    "ephemeris_source": "not applicable (no aberration/parallax)",
+    "library_notes": {
+      "astropy": "The 'astropy' adapter calls ERFA/pyerfa C kernels directly from Python. Accuracy results are identical to ERFA. Performance results measure Python-loop + ERFA-kernel overhead, NOT the high-level astropy.coordinates stack."
+    },
+    "models": {
+      "erfa": "GMST=IAU2006 (eraGmst06), ERA=IAU2000 (eraEra00)",
+      "siderust": "GST polynomial (IAU 2006 coefficients), ERA from IERS definition",
+      "astropy": "GMST=IAU2006, ERA=IAU2000 via bundled ERFA",
+      "libnova": "GMST=Meeus Formula 11.4, GAST=MST+nutation correction (no ERA)",
+      "anise": "Not available in ANISE adapter for this experiment"
+    },
+    "model_parity_class": "model-mismatch",
+    "accuracy_interpretation": "agreement with ERFA baseline (libnova uses Meeus, no ERA)",
+    "mode": "common_denominator",
+    "candidate_parity": "model-mismatch"
+  },
+  "inputs": {
+    "count": 1000,
+    "seed": 42,
+    "dataset_fingerprint": "85a1b233696656ec"
+  },
+  "accuracy": {
+    "reference": "erfa",
+    "candidate": "libnova",
+    "gmst_error_rad": {
+      "p50": 1.2903010165876694e-07,
+      "p90": 2.914714065660462e-07,
+      "p99": 3.297765744747494e-07,
+      "max": 1.3857215659385247e-06,
+      "mean": 1.4490833742627187e-07,
+      "rms": 1.8473725206628621e-07
+    },
+    "gmst_error_arcsec": {
+      "p50": 0.026614368918688708,
+      "p90": 0.06012029320191417,
+      "p99": 0.06802130123886534,
+      "max": 0.28582559031073274,
+      "mean": 0.029889490142818827,
+      "rms": 0.038104793504073524
+    },
+    "era_error_rad": {
+      "p50": null,
+      "p90": null,
+      "p99": null,
+      "max": null
+    }
+  },
+  "performance": {
+    "per_op_ns": 3.9,
+    "per_op_ns_mean": 3.96,
+    "per_op_ns_median": 3.9,
+    "per_op_ns_std_dev": 0.2319003617456812,
+    "per_op_ns_min": 3.7,
+    "per_op_ns_max": 4.4,
+    "per_op_ns_ci95": [
+      3.8162666666666665,
+      4.1037333333333335
+    ],
+    "per_op_ns_cv_pct": 5.856069741052556,
+    "throughput_ops_s": 256410256.41025642,
+    "total_ns_median": 194973.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      3.8,
+      3.9,
+      3.8,
+      4.4,
+      3.9,
+      3.7,
+      3.8,
+      3.9,
+      4.1,
+      4.3
+    ],
+    "valid": false,
+    "warnings": [
+      "Per-op time (3.9 ns) is below measurable threshold (10.0 ns). Results may be dominated by measurement overhead."
+    ]
+  },
+  "reference_performance": {
+    "per_op_ns": 26.55,
+    "per_op_ns_mean": 26.32,
+    "per_op_ns_median": 26.55,
+    "per_op_ns_std_dev": 0.7743097284391796,
+    "per_op_ns_min": 25.1,
+    "per_op_ns_max": 27.1,
+    "per_op_ns_ci95": [
+      25.840077858166325,
+      26.799922141833676
+    ],
+    "per_op_ns_cv_pct": 2.941906263066792,
+    "throughput_ops_s": 37664783.42749529,
+    "total_ns_median": 1327987.0,
+    "batch_size": 50000,
+    "rounds": 10,
+    "samples": [
+      27.1,
+      26.6,
+      26.8,
+      27.1,
+      27.0,
+      26.5,
+      25.4,
+      25.3,
+      25.1,
+      26.3
+    ],
+    "valid": true,
+    "warnings": []
+  },
+  "benchmark_config": {
+    "perf_rounds": 10,
+    "perf_warmup": 100,
+    "perf_enabled": true
+  },
+  "run_metadata": {
+    "date": "2026-03-12T21:44:07Z",
+    "git_shas": {
+      "lab": "cc373bc93395",
+      "siderust": "e6b3cbbcbbf7",
+      "anise": "8bf319327699",
+      "erfa": "1d9738bed995",
+      "libnova": "655bcd1aec9d"
+    },
+    "git_branch": "main",
+    "cpu": "x86_64",
+    "cpu_count": 22,
+    "os": "Linux 6.17.0-14-generic",
+    "platform_detail": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "toolchain": {
+      "python": "3.12.3",
+      "numpy": "2.4.2",
+      "rustc": "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+      "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "pyerfa": "2.0.1.5"
+    },
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+  }
+}

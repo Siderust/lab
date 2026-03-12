@@ -6,15 +6,22 @@ use qtty::{Degrees, Meters, Radians};
 use siderust::coordinates::cartesian;
 use siderust::coordinates::centers::Geodetic;
 use siderust::coordinates::frames::{
-    ECEF, EclipticMeanJ2000, EclipticTrueOfDate, EquatorialMeanJ2000, EquatorialMeanOfDate,
-    EquatorialTrueOfDate, Horizontal, ICRS,
+    EclipticMeanJ2000, EclipticTrueOfDate, EquatorialMeanJ2000, EquatorialMeanOfDate,
+    EquatorialTrueOfDate, Horizontal, ECEF, ICRS,
 };
 use siderust::coordinates::transform::ecliptic_of_date::FromEclipticTrueOfDate;
 use siderust::coordinates::transform::horizontal::FromHorizontal;
+use siderust::coordinates::transform::providers::frame_rotation;
+use siderust::coordinates::transform::AstroContext;
 use siderust::coordinates::transform::DirectionAstroExt;
 use siderust::time::JulianDate;
 
 use crate::ang_sep;
+
+fn normalize3(v: [f64; 3]) -> [f64; 3] {
+    let n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    [v[0] / n, v[1] / n, v[2] / n]
+}
 
 macro_rules! dir_experiment {
     ($fn_acc:ident, $fn_perf:ident, $exp:expr, $model:expr, $Src:ty, $Dst:ty) => {
@@ -44,11 +51,12 @@ macro_rules! dir_experiment {
                     .collect();
                 let jd = JulianDate::new(p[0]);
                 let src = cartesian::Direction::<$Src>::new(p[1], p[2], p[3]);
-                let vin = src.as_vec3();
-                let dst: cartesian::Direction<$Dst> = src.to_frame(&jd);
-                let vout = dst.as_vec3();
-                let bk: cartesian::Direction<$Src> = dst.to_frame(&jd);
-                let cl = src.angle_to(&bk);
+                let vin = [src.x(), src.y(), src.z()];
+                let rot = frame_rotation::<$Src, $Dst>(jd, &AstroContext::default());
+                let vout = normalize3(rot.apply_array(vin));
+                let inv = frame_rotation::<$Dst, $Src>(jd, &AstroContext::default());
+                let vback = normalize3(inv.apply_array(vout));
+                let cl = ang_sep(&vin, &vback);
                 if i > 0 {
                     write!(out, ",\n").unwrap();
                 }
@@ -79,15 +87,17 @@ macro_rules! dir_experiment {
             }
             for i in 0..n.min(100) {
                 let jd = JulianDate::new(jds[i]);
-                let d: cartesian::Direction<$Dst> = dirs[i].to_frame(&jd);
-                std::hint::black_box(&d);
+                let rot = frame_rotation::<$Src, $Dst>(jd, &AstroContext::default());
+                let vout = normalize3(rot.apply_array([dirs[i].x(), dirs[i].y(), dirs[i].z()]));
+                std::hint::black_box(vout);
             }
             let start = Instant::now();
             let mut sink = 0.0_f64;
             for i in 0..n {
                 let jd = JulianDate::new(jds[i]);
-                let d: cartesian::Direction<$Dst> = dirs[i].to_frame(&jd);
-                sink = d.x();
+                let rot = frame_rotation::<$Src, $Dst>(jd, &AstroContext::default());
+                let vout = normalize3(rot.apply_array([dirs[i].x(), dirs[i].y(), dirs[i].z()]));
+                sink = vout[0];
             }
             let elapsed = start.elapsed();
             let total_ns = elapsed.as_nanos() as f64;
@@ -215,7 +225,7 @@ dir_experiment!(
     run_nutation,
     run_nutation_perf,
     "nutation",
-    "IAU_2000B_nutation",
+    "IAU_2006_2000A_nutation",
     EquatorialMeanOfDate,
     EquatorialTrueOfDate
 );
@@ -635,7 +645,7 @@ dir_experiment!(
     run_inv_nutation,
     run_inv_nutation_perf,
     "inv_nutation",
-    "IAU2000A_inv_nut",
+    "IAU2006_2000A_inv_nut",
     EquatorialTrueOfDate,
     EquatorialMeanOfDate
 );
